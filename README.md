@@ -10,4 +10,5 @@ making changes online while I change things in R studio. but they are not poppin
 1. change 1
 2. change 2
 3. change 3
->>>>>>> a8fcbacfb93eaa7af01b317314de5e34d698aee7
+
+It worked!
