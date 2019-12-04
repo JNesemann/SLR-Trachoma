@@ -9,7 +9,7 @@
     #consensus/trump grade smartphone vs consensus SLR--JN: Done
     #JN: I also compared all of the above to field grades
   #Village-level
-    #Prevalence of TF, TI, TF+/-TI per village. JN comment: how to divide into villages, look at other TIRET 3 datasets
+    #Prevalence of TF, TI, TF+/-TI per village.
       #SLR: JN Done
       #Smartphone  JN done
       #PCR  JN done
@@ -35,7 +35,7 @@ master_key_import <- read_excel("Masked Number Master Key (1).xlsx")
 TIRET3_PCR_import <- read_excel("TIRET3_PCR_for John.xlsx")
 SLR_import <- read_csv("SLRTrachoma_DATA_2019-11-27_1325.csv")
 TIRET3_PhotoExamData13Villages <- read_excel("TIRET3-PhotoExamDatain13Villages.xlsx")
-skim(TIRET3_PhotoExamData13Villages)  #this dataset has 13 unique stateteam-codes, I am assuming this corresponds to the 13 villages
+skim(TIRET3_PhotoExamData13Villages)  #this dataset has 13 unique stateteam-codes, corresponds to the 13 villages
 
 #cleaning master key
 master_key <- master_key_import %>%
@@ -72,10 +72,10 @@ TIRET3_villages <- TIRET3_PhotoExamData13Villages %>%
          tuber = Tuber,
          photo = Photo) %>%
   #creating numeric fieldgrade
-  mutate(clinic_ti_yn = as.numeric(grepl("TI", clinical_exam)),
-         clinic_tf_yn = as.numeric(grepl("TF", clinical_exam)),
-         clinic_tfti_yn = as.numeric(grepl("TF/TI", clinical_exam)),
-         number=as.numeric(number))
+  mutate(clinic_ti_yn = if_else(!is.na(clinical_exam), as.numeric(grepl("TI", clinical_exam)), NA_real_),
+                  clinic_tf_yn = if_else(!is.na(clinical_exam), as.numeric(grepl("TF", clinical_exam)), NA_real_),
+                  clinic_tfti_yn = if_else(!is.na(clinical_exam), as.numeric(grepl("TF/TI", clinical_exam)), NA_real_),
+                  number=as.numeric(number))
 skim(TIRET3_villages)    #JN: even when using this data set to calculate clinical grades we are still missing grades for 80 individuals...
 
 #merging PCR data with complete data in TIRET3_PhotoExamData13Villages, this will provide the stateteam-code which I am using as a proxy for village ID
@@ -84,301 +84,107 @@ skim(PCR)
 skim(TIRET3_villages)
 skim(PCR_exam)
 
-#selecting blakes images to calculate SLR and smartphone ICC
-slr_blake <- SLR_import %>%
-  rename(id = record_id, complete = trachoma_grading_complete) %>%
-  separate(id, into = c("id", "dde"), sep = "--", remove = TRUE, convert = TRUE) %>%
-  #filtering out dde 2, to give just blakes images
-  filter(dde == 1) %>%
-  select(-dde) %>%
-  filter(!(grepl("est", id))) %>%
-  mutate(id=as.numeric(id)) %>%
-  #mutating grades
-  mutate(tf_yn=case_when(tf %in% c(1, 2) ~ as.integer(1),
-                         tf %in% c(3, 4) ~ as.integer(0)),
-         ti_yn=case_when(ti %in% c(1, 2) ~ as.integer(1),
-                         ti %in% c(3, 4)  ~ as.integer(0)),
-         tfti_yn=case_when(tf %in% c(1, 2) & ti %in% c(1, 2) ~ as.integer(1),
-                           tf %in% c(3, 4) | ti %in% c(3, 4) ~ as.integer(1)))
-  #checking for good quality images without grades
-  dummy_blake <- slr_blake %>%
-    filter(quality %in% c(1,2) & (is.na(tf) | is.na(ti)))
-  skim(dummy_blake) #4 images
-  #checking for duplicates
-  blake_dups <- slr_blake %>%
-    group_by(id) %>%
-    mutate(dup=n()) #xtabs(data=blake_dups, ~dup, addNA=TRUE) none
-  
-  #Merging blakes image grades and master key and putting SLR and iphone grades in the same row (widening data set)
-slr_blake_wide <- right_join(slr_blake, master_key, by=c("id" = "mask")) %>%
-  mutate(camera.instance=paste(camera, repeat.instance, sep="_")) %>%
-  select(number, camera.instance, id, everything()) %>%
-  select(-camera, -repeat.instance) %>%
-  gather(field, value, id:ti_yn) %>%
-  mutate(camera_field=paste(camera.instance, field, sep="_")) %>%
-  select(-camera.instance, -field) %>%
-  spread(camera_field, value, convert=TRUE)
-skim(slr_blake_wide)
-  #Blakes intra-rater reliability
-    #SLR TF intra-rater reliability
-xtabs(data=slr_blake_wide, ~ SLR_1_tf_yn+SLR_2_tf_yn, addNA=TRUE) 
-CohenKappa(slr_blake_wide$SLR_1_tf_yn, slr_blake_wide$SLR_2_tf_yn, conf.level=0.95)
-    #SLR TI intra-rater reliability
-xtabs(data=slr_blake_wide, ~ SLR_1_ti_yn+SLR_2_ti_yn, addNA=TRUE) 
-CohenKappa(slr_blake_wide$SLR_1_ti_yn, slr_blake_wide$SLR_2_ti_yn, conf.level=0.95)
-    #smartphone TF intra-rater reliability
-xtabs(data=slr_blake_wide, ~ smartphone_1_tf_yn+smartphone_2_tf_yn, addNA=TRUE) 
-CohenKappa(slr_blake_wide$smartphone_1_tf_yn, slr_blake_wide$smartphone_2_tf_yn, conf.level=0.95)
-    #smartphone TI intra-rater reliability
-xtabs(data=slr_blake_wide, ~ smartphone_1_ti_yn+smartphone_2_ti_yn, addNA=TRUE) 
-CohenKappa(slr_blake_wide$smartphone_1_ti_yn, slr_blake_wide$smartphone_2_ti_yn, conf.level=0.95)
-
-#Repeating the process for John
-slr_john <- SLR_import %>%
-  rename(id = record_id, complete = trachoma_grading_complete) %>%
-  separate(id, into = c("id", "dde"), sep = "--", remove = TRUE, convert = TRUE) %>%
-  #filtering out dde 2, to give just johns images
-  filter(dde == 2) %>%
-  select(-dde) %>%
-  filter(!(grepl("est", id))) %>%
-  mutate(id=as.numeric(id)) %>%
-  #mutating grades
-  mutate(tf_yn=case_when(tf %in% c(1, 2) ~ as.integer(1),
-                         tf %in% c(3, 4) ~ as.integer(0)),
-         ti_yn=case_when(ti %in% c(1, 2) ~ as.integer(1),
-                         ti %in% c(3, 4)  ~ as.integer(0)),
-         tfti_yn=case_when(tf %in% c(1, 2) & ti %in% c(1, 2) ~ as.integer(1),
-                           tf %in% c(3, 4) | ti %in% c(3, 4) ~ as.integer(1)))
-  #checking for good quality images without grades
-dummy_john <- slr_john %>%
-  filter(quality %in% c(1,2) & (is.na(tf) | is.na(ti)))
-skim(dummy_john) #0 images
-  #checking for duplicates
-john_dups <- slr_john %>%
-  group_by(id) %>%
-  mutate(dup=n()) #xtabs(data=john_dups, ~dup, addNA=TRUE) none
-
-  #Merging johns image grades and master key and putting SLR and iphone grades in the same row (widening data set)
-slr_john_wide <- right_join(slr_john, master_key, by=c("id" = "mask")) %>%
-  mutate(camera.instance=paste(camera, repeat.instance, sep="_")) %>%
-  select(number, camera.instance, id, everything()) %>%
-  select(-camera, -repeat.instance) %>%
-  gather(field, value, id:ti_yn) %>%
-  mutate(camera_field=paste(camera.instance, field, sep="_")) %>%
-  select(-camera.instance, -field) %>%
-  spread(camera_field, value, convert=TRUE)
-skim(slr_john_wide)
-  #Johns intra-rater reliability
-    #SLR TF intra-rater reliability
-xtabs(data=slr_john_wide, ~ SLR_1_tf_yn+SLR_2_tf_yn, addNA=TRUE) 
-CohenKappa(slr_john_wide$SLR_1_tf_yn, slr_john_wide$SLR_2_tf_yn, conf.level=0.95)
-    #SLR TI intra-rater reliability
-xtabs(data=slr_john_wide, ~ SLR_1_ti_yn+SLR_2_ti_yn, addNA=TRUE) 
-CohenKappa(slr_john_wide$SLR_1_ti_yn, slr_john_wide$SLR_2_ti_yn, conf.level=0.95)
-    #smartphone TF intra-rater reliability
-xtabs(data=slr_john_wide, ~ smartphone_1_tf_yn+smartphone_2_tf_yn, addNA=TRUE) 
-CohenKappa(slr_john_wide$smartphone_1_tf_yn, slr_john_wide$smartphone_2_tf_yn, conf.level=0.95)
-    #smartphone TI intra-rater reliability
-xtabs(data=slr_john_wide, ~ smartphone_1_ti_yn+smartphone_2_ti_yn, addNA=TRUE) 
-CohenKappa(slr_john_wide$smartphone_1_ti_yn, slr_john_wide$smartphone_2_ti_yn, conf.level=0.95)
-    #not that great...
-
-#cleaning SLR import
-SLR <- SLR_import %>%
+#creating one large dataset 
+xyz <- SLR_import %>%
   #clean and separate graders 1 and 2
-  rename(
-    id = record_id,
-    complete = trachoma_grading_complete) %>%
+  rename(id = record_id,
+         complete = trachoma_grading_complete) %>%
+  # JK: This mutate is new...
+  mutate(tf_di=if_else(tf %in% c(1, 2),1,if_else(tf %in% c(3, 4),0,NA_real_)),
+         ti_di=if_else(ti %in% c(1, 2),1,if_else(ti %in% c(3, 4),0,NA_real_))) %>%
   separate(id, into = c("id", "dde"), sep = "--", remove = TRUE, convert = TRUE) %>%
+  # JK: Get rid of the 2 "test" id's, then convert to numeric
+  filter(!(grepl("est", id))) %>%
+  # JK: This group_by is new; 
+  mutate(id=as.numeric(id)) %>%
+  group_by(id) %>%
+  mutate(sumtf=sum(tf_di, na.rm=TRUE),
+         sumti=sum(ti_di, na.rm=TRUE),
+         totalid=n(), # xtabs(data=xyz, ~sumtf+totalid, addNA=TRUE)
+         tf_yn=case_when(totalid==3 & sumtf>=2 ~ 1,
+                         totalid==3 & sumtf<2 ~ 0,
+                         totalid==2 & sumtf==2 ~ 1,
+                         totalid==2 & sumtf==0 ~ 0,
+                         TRUE ~ NA_real_),
+         ti_yn=case_when(totalid==3 & sumti>=2 ~ 1,
+                         totalid==3 & sumti<2 ~ 0,
+                         totalid==2 & sumti==2 ~ 1,
+                         totalid==2 & sumti==0 ~ 0,
+                         TRUE ~ NA_real_)) %>%
+  select(-complete, -sumtf, -sumti, -totalid) %>%
+  select(id, tf_yn, ti_yn, dde, tf_di, ti_di, everything()) %>% 
   #creating a wide dataset
-  gather(field, value, quality:complete) %>%
+  gather(field, value, tf_di:notes) %>%
   mutate(field_dde = paste(field, dde, sep = "_")) %>%
   select(-field, -dde) %>%
   spread(field_dde, value, convert = TRUE) %>%
-  #Get rid of the 2 "test" id's, then convert to numeric
-  filter(!(grepl("est", id))) %>%
-  mutate(id=as.numeric(id))
-skim(SLR)
-
-#merging datasets
-slr_master_wide <- right_join(SLR, master_key, by=c("id" = "mask")) %>%
-  #JK - get number as the first field, camera as second, then doesn't matter
+  # JK: Note that when you enter the dot below it means to use the current data, so you're merging into the current dataframe
+  right_join(., master_key, by=c("id" = "mask")) %>%
   mutate(camera.instance=paste(camera, repeat.instance, sep="_")) %>%
-  select(number, camera.instance, id, everything()) %>%
+  select(number, camera.instance, id, tf_yn, ti_yn, everything()) %>%
   select(-camera, -repeat.instance) %>%
   gather(field, value, id:ti_NA) %>%
   mutate(camera_field=paste(camera.instance, field, sep="_")) %>%
   select(-camera.instance, -field) %>%
-  spread(camera_field, value, convert=TRUE)
-  
-slr_master_wide_grades <- slr_master_wide %>%
-  #selecting columns relevant to analysis and removing grades for the duplicate images (e.g., "SLR/smartphone_2_")
-  select(number, SLR_1_tf_1:SLR_1_ti_NA, smartphone_1_tf_1:smartphone_1_ti_NA) %>%
-  #creating new SLR trump grades
-  mutate(SLR_tf_yn_trump=case_when(SLR_1_tf_NA %in% c(1,2) ~ as.integer(1),
-                                   SLR_1_tf_NA %in% c(3,4) ~ as.integer(0),
-                                   SLR_1_tf_1 %in% c(1, 2) & SLR_1_tf_2 %in% c(1, 2) ~ as.integer(1),
-                                   SLR_1_tf_1 %in% c(3, 4) & SLR_1_tf_2 %in% c(3, 4) ~ as.integer(0),
-                               TRUE ~ NA_integer_),
-         SLR_ti_yn_trump=case_when(SLR_1_ti_NA %in% c(1,2) ~ as.integer(1),
-                                   SLR_1_ti_NA %in% c(3,4) ~ as.integer(0),
-                                   SLR_1_ti_1 %in% c(1, 2) & SLR_1_ti_2 %in% c(1, 2) ~ as.integer(1),
-                                   SLR_1_ti_1 %in% c(3, 4) & SLR_1_ti_2 %in% c(3, 4) ~ as.integer(0),
-                               TRUE ~ NA_integer_),
-         SLR_tfti_yn_trump=case_when(SLR_1_ti_NA %in% c(1,2) & SLR_1_tf_NA %in% c(1,2) ~ as.integer(1),
-                                     SLR_1_ti_NA %in% c(3,4) & SLR_1_tf_NA %in% c(3,4) ~ as.integer(0),
-                                     SLR_1_ti_1 %in% c(1,2) & SLR_1_tf_1 %in% c(1,2) & SLR_1_tf_2 %in% c(1,2) & SLR_1_ti_2 %in% c(1,2) ~ as.integer(1),
-                                     SLR_1_ti_1 %in% c(3, 4) | SLR_1_ti_2 %in% c(3, 4) | SLR_1_tf_1 %in% c(3, 4) | SLR_1_tf_2 %in% c(3, 4)  ~ as.integer(0),
-                                     TRUE ~ NA_integer_)) %>%
-  #creating new smartphone trump grades
-  mutate(smart_tf_yn_trump=case_when(smartphone_1_tf_NA %in% c(1,2) ~ as.integer(1),
-                                     smartphone_1_tf_NA %in% c(3,4) ~ as.integer(0),
-                                     smartphone_1_tf_1 %in% c(1, 2) & smartphone_1_tf_2 %in% c(1, 2) ~ as.integer(1),
-                                     smartphone_1_tf_1 %in% c(3, 4) & smartphone_1_tf_2 %in% c(3, 4) ~ as.integer(0),
-                                   TRUE ~ NA_integer_),
-         smart_ti_yn_trump=case_when(smartphone_1_ti_NA %in% c(1,2) ~ as.integer(1),
-                                     smartphone_1_ti_NA %in% c(3,4) ~ as.integer(0),
-                                     smartphone_1_ti_1 %in% c(1, 2) & smartphone_1_ti_2 %in% c(1, 2) ~ as.integer(1),
-                                     smartphone_1_ti_1 %in% c(3, 4) & smartphone_1_ti_2 %in% c(3, 4) ~ as.integer(0),
-                                   TRUE ~ NA_integer_),
-         smart_tfti_yn_trump=case_when(smartphone_1_ti_NA %in% c(1,2) & smartphone_1_tf_NA %in% c(1,2) ~ as.integer(1),
-                                       smartphone_1_ti_NA %in% c(3,4) & smartphone_1_tf_NA %in% c(3,4) ~ as.integer(0),
-                                       smartphone_1_ti_1 %in% c(1,2) & smartphone_1_tf_1 %in% c(1,2) & smartphone_1_tf_2 %in% c(1,2) & smartphone_1_ti_2 %in% c(1,2) ~ as.integer(1),
-                                       smartphone_1_ti_1 %in% c(3,4) | smartphone_1_ti_2 %in% c(3,4) | smartphone_1_tf_1 %in% c(3,4) | smartphone_1_tf_2 %in% c(3,4)  ~ as.integer(0),
-                                     TRUE ~ NA_integer_)) %>%
-  #creating new SLR consensus grades
-  mutate(SLR_tf_yn_cons=case_when(SLR_1_tf_NA %in% c(1,2) & SLR_1_tf_1 %in% c(1,2) | SLR_1_tf_NA %in% c(1,2) & SLR_1_tf_2 %in% c(1,2) | SLR_1_tf_1 %in% c(1,2) & SLR_1_tf_2 %in% c(1,2) ~ as.integer(1),
-                                  SLR_1_tf_NA %in% c(3,4) & SLR_1_tf_1 %in% c(3,4) | SLR_1_tf_NA %in% c(3,4) & SLR_1_tf_2 %in% c(3,4) | SLR_1_tf_1 %in% c(3,4) & SLR_1_tf_2 %in% c(3,4) ~ as.integer(0),
-                                  TRUE ~ NA_integer_),
-         SLR_ti_yn_cons=case_when(SLR_1_ti_NA %in% c(1,2) & SLR_1_ti_1 %in% c(1,2) | SLR_1_ti_NA %in% c(1,2) & SLR_1_ti_2 %in% c(1,2) | SLR_1_ti_1 %in% c(1,2) & SLR_1_ti_2 %in% c(1,2) ~ as.integer(1),
-                                  SLR_1_ti_NA %in% c(3,4) & SLR_1_ti_1 %in% c(3,4) | SLR_1_ti_NA %in% c(3,4) & SLR_1_ti_2 %in% c(3,4) | SLR_1_ti_1 %in% c(3,4) & SLR_1_ti_2 %in% c(3,4) ~ as.integer(0),
-                                  TRUE ~ NA_integer_)) %>%
-  mutate(SLR_tfti_yn_cons=if_else(SLR_tf_yn_cons == 1 & SLR_ti_yn_cons == 1, as.integer(1), as.integer(0))) %>%
-  #creating new smartphone consensus grades
-  mutate(smart_tf_yn_cons=case_when(smartphone_1_tf_NA %in% c(1,2) & smartphone_1_tf_1 %in% c(1,2) | smartphone_1_tf_NA %in% c(1,2) & smartphone_1_tf_2 %in% c(1,2) | smartphone_1_tf_1 %in% c(1,2) & smartphone_1_tf_2 %in% c(1,2) ~ as.integer(1),
-                                    smartphone_1_tf_NA %in% c(3,4) & smartphone_1_tf_1 %in% c(3,4) | smartphone_1_tf_NA %in% c(3,4) & smartphone_1_tf_2 %in% c(3,4) | smartphone_1_tf_1 %in% c(3,4) & smartphone_1_tf_2 %in% c(3,4) ~ as.integer(0),
-                                  TRUE ~ NA_integer_),
-         smart_ti_yn_cons=case_when(smartphone_1_ti_NA %in% c(1,2) & smartphone_1_ti_1 %in% c(1,2) | smartphone_1_ti_NA %in% c(1,2) & smartphone_1_ti_2 %in% c(1,2) | smartphone_1_ti_1 %in% c(1,2) & smartphone_1_ti_2 %in% c(1,2) ~ as.integer(1),
-                                    smartphone_1_ti_NA %in% c(3,4) & smartphone_1_ti_1 %in% c(3,4) | smartphone_1_ti_NA %in% c(3,4) & smartphone_1_ti_2 %in% c(3,4) | smartphone_1_ti_1 %in% c(3,4) & smartphone_1_ti_2 %in% c(3,4) ~ as.integer(0),
-                                  TRUE ~ NA_integer_)) %>%
-  mutate(smart_tfti_yn_cons=if_else(smart_tf_yn_cons == 1 & smart_ti_yn_cons == 1, as.integer(1), as.integer(0))) %>%
-  #converting individual grades from 1-4 to binary
-  #first SLRs
-  mutate(slr_tf_1=case_when(SLR_1_tf_1 %in% c(1,2) ~ as.integer(1),
-                            SLR_1_tf_1 %in% c(3,4) ~ as.integer(0)),
-         slr_tf_2=case_when(SLR_1_tf_2 %in% c(1,2) ~ as.integer(1),
-                            SLR_1_tf_2 %in% c(3,4) ~ as.integer(0)),
-         slr_tf_NA=case_when(SLR_1_tf_NA %in% c(1,2) ~ as.integer(1),
-                            SLR_1_tf_NA %in% c(3,4) ~ as.integer(0)),
-         slr_ti_1=case_when(SLR_1_ti_1 %in% c(1,2) ~ as.integer(1),
-                            SLR_1_ti_1 %in% c(3,4) ~ as.integer(0)),
-         slr_ti_2=case_when(SLR_1_ti_2 %in% c(1,2) ~ as.integer(1),
-                            SLR_1_ti_2 %in% c(3,4) ~ as.integer(0)),
-         slr_ti_NA=case_when(SLR_1_ti_NA %in% c(1,2) ~ as.integer(1),
-                             SLR_1_ti_NA %in% c(3,4) ~ as.integer(0)),
-         #and now smartphones
-         smart_tf_1=case_when(smartphone_1_tf_1 %in% c(1,2) ~ as.integer(1),
-                              smartphone_1_tf_1 %in% c(3,4) ~ as.integer(0)),
-         smart_tf_2=case_when(smartphone_1_tf_2 %in% c(1,2) ~ as.integer(1),
-                              smartphone_1_tf_2 %in% c(3,4) ~ as.integer(0)),
-         smart_tf_NA=case_when(smartphone_1_tf_NA %in% c(1,2) ~ as.integer(1),
-                               smartphone_1_tf_NA %in% c(3,4) ~ as.integer(0)),
-         smart_ti_1=case_when(smartphone_1_ti_1 %in% c(1,2) ~ as.integer(1),
-                              smartphone_1_ti_1 %in% c(3,4) ~ as.integer(0)),
-         smart_ti_2=case_when(smartphone_1_ti_2 %in% c(1,2) ~ as.integer(1),
-                              smartphone_1_ti_2 %in% c(3,4) ~ as.integer(0)),
-         smart_ti_NA=case_when(smartphone_1_ti_NA %in% c(1,2) ~ as.integer(1),
-                               smartphone_1_ti_NA %in% c(3,4) ~ as.integer(0)))
-skim(slr_master_wide_grades)
-head(slr_master_wide_grades)
+  spread(camera_field, value, convert=TRUE) %>%
+  left_join(., PCR_exam, by="number")
+# JK: Now this is one big dataset. The variable names follow the pattern:
+# SLR vs smartphone, then...
+# whether it's a repeat (1 is the first instance; 2 is the second instance; so primary analyses should only be with 1)
+# variable (tf /ti etc)
+# grader (1=Blake, 2=John, NA=Jeremy)
 
-#Kappas:
-  #among slr photos john vs blake
-    #SLR TF, 0.654
-    xtabs(data=slr_master_wide_grades, ~ slr_tf_1+slr_tf_2, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$slr_tf_1, slr_master_wide_grades$slr_tf_2, conf.level=0.95)
-    #SLR TI, 0.711
-    xtabs(data=slr_master_wide_grades, ~ slr_ti_1+slr_ti_2, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$slr_ti_1, slr_master_wide_grades$slr_ti_2, conf.level=0.95)
-  #among smartphone photos john vs blake
-    #smartphone TF 0.55...
-    xtabs(data=slr_master_wide_grades, ~ smart_tf_1+smart_tf_2, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$smart_tf_1, slr_master_wide_grades$smart_tf_2, conf.level=0.95)
-    #smartphone TI 0.74
-    xtabs(data=slr_master_wide_grades, ~ smart_ti_1+smart_ti_2, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$smart_ti_1, slr_master_wide_grades$smart_ti_2, conf.level=0.95)
-  #consensus grade smartphone vs consensus SLR
-    #consensus TF  0.72
-    xtabs(data=slr_master_wide_grades, ~ smart_tf_yn_cons + SLR_tf_yn_cons, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$smart_tf_yn_cons, slr_master_wide_grades$SLR_tf_yn_cons, conf.level=0.95)
-    #consensus TI 0.809
-    xtabs(data=slr_master_wide_grades, ~ smart_ti_yn_cons + SLR_ti_yn_cons, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$smart_ti_yn_cons, slr_master_wide_grades$SLR_ti_yn_cons, conf.level=0.95)
-  #trump grade smartphone vs trump SLR
-    #consensus TF
-    xtabs(data=slr_master_wide_grades, ~ smart_tf_yn_trump + SLR_tf_yn_trump, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$smart_tf_yn_trump, slr_master_wide_grades$SLR_tf_yn_trump, conf.level=0.95)
-    #consensus TI
-    xtabs(data=slr_master_wide_grades, ~ smart_ti_yn_trump + SLR_ti_yn_trump, addNA=TRUE) 
-    CohenKappa(slr_master_wide_grades$smart_ti_yn_trump, slr_master_wide_grades$SLR_ti_yn_trump, conf.level=0.95)
-    
-#merging in PCR data
-photo_pcr_master <- left_join(slr_master_wide_grades, PCR_exam, by = "number")
-skim(photo_pcr_master)
+# JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
+# Using 4-level, but without weighting 
+# (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
+# Blake
+xtabs(data=xyz, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_1, xyz$SLR_2_tf_1, conf.level=0.95)
+# Using dichotomous variable
+xtabs(data=xyz, ~ SLR_1_tf_di_1 +SLR_2_tf_di_1 , addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_di_1 , xyz$SLR_2_tf_di_1 , conf.level=0.95)
+# John
+# Using 4-level, but without weighting 
+# (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
+xtabs(data=xyz, ~ SLR_1_tf_2+SLR_2_tf_2, addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_2, xyz$SLR_2_tf_2, conf.level=0.95)
+# Using dichotomous variable
+xtabs(data=xyz, ~ SLR_1_tf_di_2 +SLR_2_tf_di_2 , addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_di_2 , xyz$SLR_2_tf_di_2 , conf.level=0.95)
+# Jeremy
+# Using 4-level, but without weighting 
+# (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
+xtabs(data=xyz, ~ SLR_1_tf_NA+SLR_2_tf_NA, addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_NA, xyz$SLR_2_tf_NA, conf.level=0.95)
+# Using dichotomous variable
+xtabs(data=xyz, ~ SLR_1_tf_di_NA +SLR_2_tf_di_NA , addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_di_NA , xyz$SLR_2_tf_di_NA , conf.level=0.95)
 
-#kappas comparing image grades with field grades
-  #blake images vs fieldgrades
-    #SLR TF vs in field TF
-  xtabs(data = photo_pcr_master, ~slr_tf_1 + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$slr_tf_1, photo_pcr_master$clinic_tf_yn, conf.level=0.95)
-    #smartphone TF vs in field TF
-  xtabs(data = photo_pcr_master, ~smart_tf_1 + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_tf_1, photo_pcr_master$clinic_tf_yn, conf.level=0.95)    
-    #SLR TI vs in field TI    
-  xtabs(data = photo_pcr_master, ~slr_ti_1 + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$slr_ti_1, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
-    #smartphone TI vs in field TI
-  xtabs(data = photo_pcr_master, ~smart_ti_1 + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_ti_1, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
-  #johns images vs fieldgrades
-    #SLR TF vs in field TF
-  xtabs(data = photo_pcr_master, ~slr_tf_2 + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$slr_tf_2, photo_pcr_master$clinic_tf_yn, conf.level=0.95)
-    #smartphone TF vs in field TF
-  xtabs(data = photo_pcr_master, ~smart_tf_2 + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_tf_2, photo_pcr_master$clinic_tf_yn, conf.level=0.95)    
-    #SLR TI vs in field TI    
-  xtabs(data = photo_pcr_master, ~slr_ti_2 + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$slr_ti_2, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
-    #smartphone TI vs in field TI
-  xtabs(data = photo_pcr_master, ~smart_ti_2 + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_ti_2, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
-  #consensus grades vs infield
-    #SLR TF vs in field TF
-  xtabs(data = photo_pcr_master, ~SLR_tf_yn_cons + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$SLR_tf_yn_cons, photo_pcr_master$clinic_tf_yn, conf.level=0.95)
-    #smartphone TF vs in field TF
-  xtabs(data = photo_pcr_master, ~smart_tf_yn_cons + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_tf_yn_cons, photo_pcr_master$clinic_tf_yn, conf.level=0.95)    
-    #SLR TI vs in field TI    
-  xtabs(data = photo_pcr_master, ~SLR_ti_yn_cons + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$SLR_ti_yn_cons, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
-    #smartphone TI vs in field TI
-  xtabs(data = photo_pcr_master, ~smart_ti_yn_cons + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_ti_yn_cons, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
-  #trump grades vs infield
-    #SLR TF vs in field TF
-  xtabs(data = photo_pcr_master, ~SLR_tf_yn_trump + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$SLR_tf_yn_trump, photo_pcr_master$clinic_tf_yn, conf.level=0.95)
-    #smartphone TF vs in field TF
-  xtabs(data = photo_pcr_master, ~smart_tf_yn_trump + clinic_tf_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_tf_yn_trump, photo_pcr_master$clinic_tf_yn, conf.level=0.95)    
-    #SLR TI vs in field TI    
-  xtabs(data = photo_pcr_master, ~SLR_ti_yn_trump + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$SLR_ti_yn_trump, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
-    #smartphone TI vs in field TI
-  xtabs(data = photo_pcr_master, ~smart_ti_yn_trump + clinic_ti_yn, addNA = TRUE)
-  CohenKappa(photo_pcr_master$smart_ti_yn_trump, photo_pcr_master$clinic_ti_yn, conf.level=0.95)
+#TRYING TO REPRODUCE WHAT YOU DID BELOW:
+#JN comment--do we want to do TI?
+#among slr photos john vs blake
+xtabs(data=xyz, ~ SLR_1_tf_di_1+SLR_1_tf_di_2, addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_di_1, xyz$SLR_1_tf_di_2, conf.level=0.95)
+# among smart photos john vs blake
+# Blake SLR vs field
+xtabs(data=xyz, ~ SLR_1_tf_di_1+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_di_1, xyz$clinic_tf_yn, conf.level=0.95)
+# John SLR vs field
+xtabs(data=xyz, ~ SLR_1_tf_di_2+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_di_2, xyz$clinic_tf_yn, conf.level=0.95)
+# Blake smart vs field
+# John smart vs field
+# Consensus SLR vs field
+xtabs(data=xyz, ~ SLR_1_tf_yn+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(xyz$SLR_1_tf_yn, xyz$clinic_tf_yn, conf.level=0.95)
+# Consensus smart vs field
+xtabs(data=xyz, ~ smartphone_1_tf_yn+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(xyz$smartphone_1_tf_yn, xyz$clinic_tf_yn, conf.level=0.95)
+# Consensus SLR vs Consensus smartphone
+xtabs(data=xyz, ~ smartphone_1_tf_yn+SLR_1_tf_yn, addNA=TRUE) 
+CohenKappa(xyz$smartphone_1_tf_yn, xyz$SLR_1_tf_yn, conf.level=0.95)
+
+# JN stopped updating
 
 #SLR, smartphone, and PCR prevalences per village
 village_image_prev <- photo_pcr_master %>%
