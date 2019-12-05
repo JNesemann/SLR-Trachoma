@@ -79,13 +79,13 @@ TIRET3_villages <- TIRET3_PhotoExamData13Villages %>%
 skim(TIRET3_villages)    #JN: even when using this data set to calculate clinical grades we are still missing grades for 80 individuals...
 
 #merging PCR data with complete data in TIRET3_PhotoExamData13Villages, this will provide the stateteam-code which I am using as a proxy for village ID
-PCR_exam <- left_join(PCR, TIRET3_villages, by = "number")
+PCR_exam <- full_join(PCR, TIRET3_villages, by = "number")
 skim(PCR)
 skim(TIRET3_villages)
 skim(PCR_exam)
 
 #creating one large dataset 
-xyz <- SLR_import %>%
+master1 <- SLR_import %>%
   #clean and separate graders 1 and 2
   rename(id = record_id,
          complete = trachoma_grading_complete) %>%
@@ -134,94 +134,224 @@ xyz <- SLR_import %>%
 # variable (tf /ti etc)
 # grader (1=Blake, 2=John, NA=Jeremy)
 
+#ARVO abstract cross tabulations
+xtabs(data = master1, ~SLR_1_tf_yn + clinic_tf_yn + smartphone_1_tf_yn)
+xtabs(data = master1, ~SLR_1_ti_yn + smartphone_1_ti_yn + clinic_ti_yn)
+
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
+#per TL can consider an ICC? JN will redo once final image grades are in
 # Using 4-level, but without weighting 
+    #JN comment--make agreement matrix for 1-4 grading
+    #JN comment--?nest by grader to account for grades clustering by grader (included examiner from TIRET data sets)
 # (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
 # Blake
-xtabs(data=xyz, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_1, xyz$SLR_2_tf_1, conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_1, master1$SLR_2_tf_1, conf.level=0.95)
 # Using dichotomous variable
-xtabs(data=xyz, ~ SLR_1_tf_di_1 +SLR_2_tf_di_1 , addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_di_1 , xyz$SLR_2_tf_di_1 , conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_di_1 +SLR_2_tf_di_1 , addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_di_1 , master1$SLR_2_tf_di_1 , conf.level=0.95)
 # John
 # Using 4-level, but without weighting 
 # (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
-xtabs(data=xyz, ~ SLR_1_tf_2+SLR_2_tf_2, addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_2, xyz$SLR_2_tf_2, conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_2+SLR_2_tf_2, addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_2, master1$SLR_2_tf_2, conf.level=0.95)
 # Using dichotomous variable
-xtabs(data=xyz, ~ SLR_1_tf_di_2 +SLR_2_tf_di_2 , addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_di_2 , xyz$SLR_2_tf_di_2 , conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_di_2 +SLR_2_tf_di_2 , addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_di_2 , master1$SLR_2_tf_di_2 , conf.level=0.95)
 # Jeremy
 # Using 4-level, but without weighting 
 # (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
-xtabs(data=xyz, ~ SLR_1_tf_NA+SLR_2_tf_NA, addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_NA, xyz$SLR_2_tf_NA, conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_NA+SLR_2_tf_NA, addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_NA, master1$SLR_2_tf_NA, conf.level=0.95)
 # Using dichotomous variable
-xtabs(data=xyz, ~ SLR_1_tf_di_NA +SLR_2_tf_di_NA , addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_di_NA , xyz$SLR_2_tf_di_NA , conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_di_NA +SLR_2_tf_di_NA , addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_di_NA , master1$SLR_2_tf_di_NA , conf.level=0.95)
 
 #TRYING TO REPRODUCE WHAT YOU DID BELOW:
 #JN comment--do we want to do TI?
 #among slr photos john vs blake
-xtabs(data=xyz, ~ SLR_1_tf_di_1+SLR_1_tf_di_2, addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_di_1, xyz$SLR_1_tf_di_2, conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_di_1+SLR_1_tf_di_2, addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_di_1, master1$SLR_1_tf_di_2, conf.level=0.95)
 # among smart photos john vs blake
 # Blake SLR vs field
-xtabs(data=xyz, ~ SLR_1_tf_di_1+clinic_tf_yn, addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_di_1, xyz$clinic_tf_yn, conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_di_1+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_di_1, master1$clinic_tf_yn, conf.level=0.95)
 # John SLR vs field
-xtabs(data=xyz, ~ SLR_1_tf_di_2+clinic_tf_yn, addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_di_2, xyz$clinic_tf_yn, conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_di_2+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_di_2, master1$clinic_tf_yn, conf.level=0.95)
 # Blake smart vs field
 # John smart vs field
 # Consensus SLR vs field
-xtabs(data=xyz, ~ SLR_1_tf_yn+clinic_tf_yn, addNA=TRUE) 
-CohenKappa(xyz$SLR_1_tf_yn, xyz$clinic_tf_yn, conf.level=0.95)
+xtabs(data=master1, ~ SLR_1_tf_yn+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(master1$SLR_1_tf_yn, master1$clinic_tf_yn, conf.level=0.95)
 # Consensus smart vs field
-xtabs(data=xyz, ~ smartphone_1_tf_yn+clinic_tf_yn, addNA=TRUE) 
-CohenKappa(xyz$smartphone_1_tf_yn, xyz$clinic_tf_yn, conf.level=0.95)
+xtabs(data=master1, ~ smartphone_1_tf_yn+clinic_tf_yn, addNA=TRUE) 
+CohenKappa(master1$smartphone_1_tf_yn, master1$clinic_tf_yn, conf.level=0.95)
 # Consensus SLR vs Consensus smartphone
-xtabs(data=xyz, ~ smartphone_1_tf_yn+SLR_1_tf_yn, addNA=TRUE) 
-CohenKappa(xyz$smartphone_1_tf_yn, xyz$SLR_1_tf_yn, conf.level=0.95)
+xtabs(data=master1, ~ smartphone_1_tf_yn+SLR_1_tf_yn, addNA=TRUE) 
+CohenKappa(master1$smartphone_1_tf_yn, master1$SLR_1_tf_yn, conf.level=0.95)
 
-# JN stopped updating
 
-#SLR, smartphone, and PCR prevalences per village
-village_image_prev <- photo_pcr_master %>%
+#now for village level prevalences and boostraped confidence intervals
+#first I have to figure out how to nest all individuals from the same village together
+library(boot)
+set.seed(22) #setting seed to make results replicable
+
+#I found this way of booting ci's online so this is method 1
+#making a boot function
+boot_mean <- function(d, i) {
+  mean(d[i])
+}
+
+dummy_boot1 <- master1 %>%
+  #selecting out unused columns--can undo this later
+  select(number, id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn, 
+         examiner, age, sex, state_code, newindpcr) %>%
   group_by(state_code) %>%
-  summarise(slr_tf_cons=mean(SLR_tf_yn_cons, na.rm = TRUE),
-            slr_tf_trump=mean(SLR_tf_yn_trump, na.rm = TRUE),
-            smart_tf_cons=mean(smart_tf_yn_cons, na.rm = TRUE),
-            smart_tf_trump=mean(smart_tf_yn_trump, na.rm = TRUE),
-            slr_ti_cons=mean(SLR_ti_yn_cons, na.rm = TRUE),
-            slr_ti_trump=mean(SLR_ti_yn_trump, na.rm = TRUE),
-            smart_ti_cons=mean(smart_ti_yn_cons, na.rm = TRUE),
-            smart_ti_trump=mean(smart_ti_yn_trump, na.rm = TRUE),
-            pcr=mean(newindpcr, na.rm = TRUE))  #these are all binary so the mean should reflect the prevalence
+  nest()  %>%
+  #doing just tf for now
+  mutate(booted_slr_tf=map(.x=data,
+                         ~boot(data = .x$SLR_1_tf_yn,
+                               statistic = boot_mean,
+                               R = 10000,
+                               stype = "i")),
+         booted_slr_tf_ci=map(.x=booted_slr_tf,  #this is the list-column containing bootstraped samples from which I will derive my confidence intervals
+                       ~ boot.ci(.x, 
+                               conf = 0.95,
+                               type = "basic")), #not sure if basic is the right type to use but it sounds right
+         booted_smart_tf=map(.x = data, 
+                            ~boot(data = .x$smartphone_1_tf_yn,
+                               statistic = boot_mean,
+                               R = 10000,
+                               stype = "i")),
+         booted_smart_tf_ci=map(.x = booted_smart_tf,
+                            ~ boot.ci(.x,
+                                conf = 0.95,
+                                type = "basic")),
+         booted_clinic_tf=map(.x = data,
+                            ~boot(data = .x$clinic_tf_yn,
+                                statistic = boot_mean,
+                                R = 10000,
+                                stype = "i")),
+         booted_clinic_tf_ci=map(.x = booted_clinic_tf,
+                             ~ boot.ci(.x,
+                                conf = 0.95,
+                                type = "basic"))) %>%
+  #extracting the relative data from the mutated boot_ci
+  mutate(slr_tf_prev = map(.x = booted_slr_tf_ci,
+                          ~.x$t0),        #extracting the point estimate 
+         slr_tf_lower_ci = map(.x = booted_slr_tf_ci,
+                        ~ .x$basic[[4]]),  #extracting the lower 2.5% limit
+         slr_tf_upper_ci = map(.x = booted_slr_tf_ci,
+                        ~ .x$basic[[5]]),
+         smart_tf_prev = map(.x = booted_smart_tf_ci,
+                           ~.x$t0),        
+         smart_tf_lower_ci = map(.x = booted_smart_tf_ci,
+                               ~ .x$basic[[4]]), 
+         smart_tf_upper_ci = map(.x = booted_smart_tf_ci,
+                               ~ .x$basic[[5]]),
+         clinic_tf_prev = map(.x = booted_clinic_tf_ci,
+                           ~.x$t0),        
+         clinic_tf_lower_ci = map(.x = booted_clinic_tf_ci,
+                               ~ .x$basic[[4]]), 
+         clinic_tf_upper_ci = map(.x = booted_clinic_tf_ci,
+                               ~ .x$basic[[5]])) %>%
+  #drop list columns as they are no longer needed
+  select(-data, -booted_slr_tf, -booted_slr_tf_ci, -booted_smart_tf, -booted_smart_tf_ci, -booted_clinic_tf, -booted_clinic_tf_ci) %>%
+  unnest()
 
-slr_tf_consCI <- MeanCI(photo_pcr_master$SLR_tf_yn_cons, sd = NULL, na.rm = TRUE, conf.level = 0.95, sides = "two.sided")
-slr_tf_trumpCI <- MeanCI(photo_pcr_master$SLR_tf_yn_trump, sd = NULL, na.rm = TRUE, conf.level = 0.95, sides = "two.sided")
+  #method 2--START HERE TOMORROW
+dummy_boot2
 
-slrtf_pos <- sum(photo_pcr_master$SLR_tf_yn_cons == 1, na.rm = TRUE)
-slrtf_tot <- length(photo_pcr_master$SLR_tf_yn_cons)
-prop.test(slrtf_pos, slrtf_tot)
+dummy_boot <- dummy_nest %>%
+  mutate(booted_prev=map(.x=data,
+                         ~boot(data = .x$SLR_1_tf_yn,
+                               statistic = boot_mean,
+                               R = 10000,
+                               stype = "i")),
+         booted_ci=map(.x=booted_prev,  #this is the list-column containing bootstraped samples from which I will derive my confidence intervals
+                       ~ boot.ci(.x, 
+                                 conf = 0.95,
+                                 type = "basic"))) %>%  #not sure if basic is the right type to use but it sounds right
+  mutate(prevalence = map(.x = booted_ci,
+                         ~.x$t0),        #extracting the point estimate 
+         lower_ci = map(.x = booted_ci,
+                        ~ .x$basic[[4]]),  #extracting the lower 2.5% limit
+         upper_ci = map(.x=booted_ci,
+                        ~ .x$basic[[5]])) %>%
+  #drop list columns as they are no longer needed
+  select(-data, -booted_prev, -booted_ci) %>%
+  unnest()
+         
+#extracting and tidying the data
+str(dummy_boot$booted_ci[[1]])
 
-skim(photo_pcr_master)
+#inspecting the results
+boot.plots <- map(.x = dummy_boot$booted.prev,
+                  ~ plot(.x))
+prints <- map(.x = dummy_boot$booted_ci,
+              ~ print(.x))
 
-#calculating village level prevalence from TIRET 3, clinical exams had a larger n (~1300 kids) so calculating clinical prevalence seperately
-clinical_prev <- TIRET3_villages%>%
+
+  mutate(slr_tf_prev.CI = map(,mean(SLR_1_ti_yn)))
+
+  
+dummy_map <- dummy_nest %>%
+  mutate(mean = map(data, "SLR_1_tf_yn") %>% map_dbl(BootCI(mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 10000)))
+
+map(dummy_nest$results, ~.x mean(SLR_1_tf_yn))
+
+BootCI(SLR_1_tf_yn, mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 10000)
+
+skim(dummy_nest)
+glimpse(dummy_boot)
+glimpse(dummy_boot$booted.prev)
+glimpse(dummy_boot$data[[1]]) #by doing this it seems each row (village) in dummy_prev has a associated list of all the variables and their values in the data column
+#SLR, smartphone, clinical, and PCR prevalences per village
+village_prev1 <- master1 %>%
   group_by(state_code) %>%
-  summarise(clinic_tf=mean(clinic_tf_yn),
-            clinic_ti=mean(clinic_ti_yn))
+    summarise(slr_tf_prev=mean(SLR_1_tf_yn, na.rm = TRUE),
+            smart_tf_prev=mean(smartphone_1_tf_yn, na.rm = TRUE),
+            clinic_tf_prev=mean(clinic_tf_yn, na.rm = TRUE),
+            slr_ti_prev=mean(SLR_1_tf_yn, na.rm = TRUE),
+            smart_ti_prev=mean(smartphone_1_tf_yn, na.rm = TRUE),
+            clinic_ti_prev=mean(clinic_ti_yn, na.rm = TRUE),
+            pcr_prev=mean(newindpcr, na.rm = TRUE))
 
-#merging clinical and image prevalence described above.
-village_prevalence <- left_join(village_image_prev, clinical_prev, by = "state_code")
-#Alternatively I can use the Conf() function from the DescTools package which should give the prevalence w/ conf intervals and also sens and spec. See sens/spec section below
+#alternatively aclculating village level exam prevalence--might be useful to compare to that calculated by the sample of 499 kids
+
+#making overall prev
+overall_prev <- xyz %>%
+  summarise(slr_tf_prev=mean(SLR_1_tf_yn, na.rm = TRUE),
+            smart_tf_prev=mean(smartphone_1_tf_yn, na.rm = TRUE),
+            clinic_tf_prev=mean(clinic_tf_yn, na.rm = TRUE),
+            slr_ti_prev=mean(SLR_1_ti_yn, na.rm = TRUE),
+            smart_ti_prev=mean(smartphone_1_ti_yn, na.rm = TRUE),
+            clinic_ti_prev=mean(clinic_ti_yn, na.rm = TRUE),
+            pcr_prev=mean(newindpcr, na.rm = TRUE))
+#restructuring for overall prevalence graph
+dummy_overall <- overall_prev %>%
+  select(-pcr_prev) %>%
+  transmute(slr.tf_prev=slr_tf_prev,
+         smart.tf_prev=smart_tf_prev,
+         clinic.tf_prev=clinic_tf_prev,
+         slr.ti_prev=slr_ti_prev,
+         smart.ti_prev=smart_ti_prev,
+         clinic.ti_prev=clinic_ti_prev) %>%
+  gather(field, prev, slr.tf_prev:clinic.ti_prev) %>%
+  separate(field, into =c("method", "sign")) %>%
+  cbind(lowerCI, upperCI)
+  
+  ggplot(dummy_overall, aes(x=method, y=prev)) +
+    geom_bar(stat= "identity") + 
+    facet_wrap(sign, nrow = 1)
+  
+    geom_errorbar(mapping = aes(x = sign, ymin = lowerCI, ymax = upperCI, position_dodge()))
 
 #Then plot different combinations of prevalences
 #restructuring the tibble so I can make the graphs I want
-dummy_village <- village_prevalence %>%
-  select(-pcr) %>%  #I chose not to include pcr as only three villages had non-zero prevalences
+dummy_village <- village_prev %>%
+  select(-pcr_prev) %>%  #I chose not to include pcr as only three villages had non-zero prevalences
   mutate(slr.cons_tf=slr_tf_cons,
          slr.trump_tf=slr_tf_trump,
          smart.cons_tf=smart_tf_cons,
@@ -368,3 +498,7 @@ Conf(x = photo_pcr_master$SLR_ti_yn_trump, ref = photo_pcr_master$newindpcr) #sa
     #smartphone
 Conf(x = photo_pcr_master$smart_ti_yn_cons, ref = photo_pcr_master$newindpcr)  #slightly better sens than SLR but worse spec
 Conf(x = photo_pcr_master$smart_ti_yn_trump, ref = photo_pcr_master$newindpcr)
+
+pospcr <- master1 %>%
+  select(newindpcr) %>%
+  filter(newindpcr == 1)
