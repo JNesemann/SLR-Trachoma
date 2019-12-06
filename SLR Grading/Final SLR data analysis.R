@@ -140,10 +140,10 @@ xtabs(data = master1, ~SLR_1_ti_yn + smartphone_1_ti_yn + clinic_ti_yn)
 
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
 #per TL can consider an ICC? JN will redo once final image grades are in
-# Using 4-level, but without weighting 
+# Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
     #JN comment--make agreement matrix for 1-4 grading
     #JN comment--?nest by grader to account for grades clustering by grader (included examiner from TIRET data sets)
-# (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
+
 # Blake
 xtabs(data=master1, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_1, master1$SLR_2_tf_1, conf.level=0.95)
@@ -190,7 +190,6 @@ CohenKappa(master1$smartphone_1_tf_yn, master1$clinic_tf_yn, conf.level=0.95)
 # Consensus SLR vs Consensus smartphone
 xtabs(data=master1, ~ smartphone_1_tf_yn+SLR_1_tf_yn, addNA=TRUE) 
 CohenKappa(master1$smartphone_1_tf_yn, master1$SLR_1_tf_yn, conf.level=0.95)
-
 
 #now for village level prevalences and boostraped confidence intervals
 #first I have to figure out how to nest all individuals from the same village together
@@ -260,94 +259,66 @@ dummy_boot1 <- master1 %>%
   select(-data, -booted_slr_tf, -booted_slr_tf_ci, -booted_smart_tf, -booted_smart_tf_ci, -booted_clinic_tf, -booted_clinic_tf_ci) %>%
   unnest()
 
-  #method 2--START HERE TOMORROW
-dummy_boot2
-
-dummy_boot <- dummy_nest %>%
-  mutate(booted_prev=map(.x=data,
-                         ~boot(data = .x$SLR_1_tf_yn,
-                               statistic = boot_mean,
-                               R = 10000,
-                               stype = "i")),
-         booted_ci=map(.x=booted_prev,  #this is the list-column containing bootstraped samples from which I will derive my confidence intervals
-                       ~ boot.ci(.x, 
-                                 conf = 0.95,
-                                 type = "basic"))) %>%  #not sure if basic is the right type to use but it sounds right
-  mutate(prevalence = map(.x = booted_ci,
-                         ~.x$t0),        #extracting the point estimate 
-         lower_ci = map(.x = booted_ci,
-                        ~ .x$basic[[4]]),  #extracting the lower 2.5% limit
-         upper_ci = map(.x=booted_ci,
-                        ~ .x$basic[[5]])) %>%
-  #drop list columns as they are no longer needed
-  select(-data, -booted_prev, -booted_ci) %>%
-  unnest()
-         
-#extracting and tidying the data
-str(dummy_boot$booted_ci[[1]])
-
-#inspecting the results
-boot.plots <- map(.x = dummy_boot$booted.prev,
-                  ~ plot(.x))
-prints <- map(.x = dummy_boot$booted_ci,
-              ~ print(.x))
-
-
-  mutate(slr_tf_prev.CI = map(,mean(SLR_1_ti_yn)))
-
-  
-dummy_map <- dummy_nest %>%
-  mutate(mean = map(data, "SLR_1_tf_yn") %>% map_dbl(BootCI(mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 10000)))
-
-map(dummy_nest$results, ~.x mean(SLR_1_tf_yn))
-
-BootCI(SLR_1_tf_yn, mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 10000)
-
-skim(dummy_nest)
-glimpse(dummy_boot)
-glimpse(dummy_boot$booted.prev)
-glimpse(dummy_boot$data[[1]]) #by doing this it seems each row (village) in dummy_prev has a associated list of all the variables and their values in the data column
-#SLR, smartphone, clinical, and PCR prevalences per village
-village_prev1 <- master1 %>%
+dummy_nest <- master1 %>%
+  select(number, id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn, 
+         examiner, age, sex, state_code, newindpcr) %>%
   group_by(state_code) %>%
-    summarise(slr_tf_prev=mean(SLR_1_tf_yn, na.rm = TRUE),
-            smart_tf_prev=mean(smartphone_1_tf_yn, na.rm = TRUE),
-            clinic_tf_prev=mean(clinic_tf_yn, na.rm = TRUE),
-            slr_ti_prev=mean(SLR_1_tf_yn, na.rm = TRUE),
-            smart_ti_prev=mean(smartphone_1_tf_yn, na.rm = TRUE),
-            clinic_ti_prev=mean(clinic_ti_yn, na.rm = TRUE),
-            pcr_prev=mean(newindpcr, na.rm = TRUE))
+  nest()
 
-#alternatively aclculating village level exam prevalence--might be useful to compare to that calculated by the sample of 499 kids
+  #method 2
+BootCI(master1$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)
+#this works, but how to iterate it over the relevant elements within the column list tibbles in dummy_nest....
 
-#making overall prev
-overall_prev <- xyz %>%
-  summarise(slr_tf_prev=mean(SLR_1_tf_yn, na.rm = TRUE),
-            smart_tf_prev=mean(smartphone_1_tf_yn, na.rm = TRUE),
-            clinic_tf_prev=mean(clinic_tf_yn, na.rm = TRUE),
-            slr_ti_prev=mean(SLR_1_ti_yn, na.rm = TRUE),
-            smart_ti_prev=mean(smartphone_1_ti_yn, na.rm = TRUE),
-            clinic_ti_prev=mean(clinic_ti_yn, na.rm = TRUE),
-            pcr_prev=mean(newindpcr, na.rm = TRUE))
-#restructuring for overall prevalence graph
-dummy_overall <- overall_prev %>%
-  select(-pcr_prev) %>%
-  transmute(slr.tf_prev=slr_tf_prev,
-         smart.tf_prev=smart_tf_prev,
-         clinic.tf_prev=clinic_tf_prev,
-         slr.ti_prev=slr_ti_prev,
-         smart.ti_prev=smart_ti_prev,
-         clinic.ti_prev=clinic_ti_prev) %>%
-  gather(field, prev, slr.tf_prev:clinic.ti_prev) %>%
-  separate(field, into =c("method", "sign")) %>%
-  cbind(lowerCI, upperCI)
-  
-  ggplot(dummy_overall, aes(x=method, y=prev)) +
-    geom_bar(stat= "identity") + 
-    facet_wrap(sign, nrow = 1)
+dummy_boot2 <- dummy_nest %>%
+  #not quite sure why but the only way I was able to get it to work was specify the fucntion ~DescTools::BootCI, otherwise I got errors saying I was trying to subset a function...
+  mutate(slr_tf_boot = map(data, ~DescTools::BootCI(.x$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         smart_tf_boot = map(data, ~DescTools::BootCI(.x$smartphone_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         clinic_tf_boot = map(data, ~DescTools::BootCI(.x$clinic_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         slr_ti_boot = map(data, ~DescTools::BootCI(.x$SLR_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         smart_ti_boot = map(data, ~DescTools::BootCI(.x$smartphone_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         clinic_ti_boot = map(data, ~DescTools::BootCI(.x$clinic_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000))) %>%
+  #extracting the mean [1], lower ci [2], and upper ci [3] from the boot strapped TF means
+  mutate(slr_tf_prev=map(.x = slr_tf_boot, ~.x[1]),
+         slr_tf_lowci=map(.x = slr_tf_boot, ~.x[2]),
+         slr_tf_upci=map(.x = slr_tf_boot, ~.x[3]),
+         smart_tf_prev=map(.x = smart_tf_boot, ~.x[1]),
+         smart_tf_lowci=map(.x = smart_tf_boot, ~.x[2]),
+         smart_tf_upci=map(.x = smart_tf_boot, ~.x[3]),
+         clinic_tf_prev=map(.x = clinic_tf_boot, ~.x[1]),
+         clinic_tf_lowci=map(.x = clinic_tf_boot, ~.x[2]),
+         clinic_tf_upci=map(.x = clinic_tf_boot, ~.x[3]),
+         #same thing for the bootstrapped ti
+         slr_ti_prev=map(.x = slr_ti_boot, ~.x[1]),
+         slr_ti_lowci=map(.x = slr_ti_boot, ~.x[2]),
+         slr_ti_upci=map(.x = slr_ti_boot, ~.x[3]),
+         smart_ti_prev=map(.x = smart_ti_boot, ~.x[1]),
+         smart_ti_lowci=map(.x = smart_ti_boot, ~.x[2]),
+         smart_ti_upci=map(.x = smart_ti_boot, ~.x[3]),
+         clinic_ti_prev=map(.x = clinic_ti_boot, ~.x[1]),
+         clinic_ti_lowci=map(.x = clinic_ti_boot, ~.x[2]),
+         clinic_ti_upci=map(.x = clinic_ti_boot, ~.x[3])) %>%
+  #removing unecessary columns
+  select(-(data:clinic_ti_boot)) %>%
+  unnest(cols = c(slr_tf_prev, slr_tf_lowci, slr_tf_upci, smart_tf_prev, smart_tf_lowci, 
+                  smart_tf_upci, clinic_tf_prev, clinic_tf_lowci, clinic_tf_upci, 
+                  slr_ti_prev, slr_ti_lowci, slr_ti_upci, smart_ti_prev, smart_ti_lowci, 
+                  smart_ti_upci, clinic_ti_prev, clinic_ti_lowci, clinic_ti_upci))
+glimpse(dummy_boot2) #it works!
+    
+#restructuring the prevalences to get the map I want START HERE TOMORROW
+dummy_map <- dummy_boot2 %>%
+  select(state_code:smart_ti_upci) %>%
+  transmute(slr.tf_prev=slr_tf_prev, slr.tf_lowci=slr_tf_lowci, slr.tf_upci=slr_tf_upci,
+            smart_tf_prev, smart_tf_lowci, smart_tf_upci,
+            clinic_tf_prev, clinic_tf_lowci, clinic_tf_upci,
+            ) %>%
+  gather(field, value, slr.tf_prev:smart_ti_upci) %>%
+  separate(field, into = c("method_sign", "measure"), sep = "_", remove = TRUE, convert = TRUE) %>%
+  separate(method_sign, into = c("method", "sign"), sep = ".", remove = TRUE, convert = TRUE)
+
   
     geom_errorbar(mapping = aes(x = sign, ymin = lowerCI, ymax = upperCI, position_dodge()))
-
+ggplot(data = dummy_boot2, aes(x = ))
 #Then plot different combinations of prevalences
 #restructuring the tibble so I can make the graphs I want
 dummy_village <- village_prev %>%
