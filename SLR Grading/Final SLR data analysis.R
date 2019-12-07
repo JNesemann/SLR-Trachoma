@@ -46,7 +46,7 @@ master_key <- master_key_import %>%
 
 #cleaning and renaming TIRET 3 PCR
 PCR <- TIRET3_PCR_import %>%
-  select(Group, `Random#`, PoolID, Pool_PCR_Results, Individual_PCR_Results, `Exam(0/1)`, Examiner, Age, gender) %>%
+  select(Group, `Random#`, PoolID, Pool_PCR_Results, Individual_PCR_Results, `Exam(0/1)`, Examiner) %>%
   rename(group = Group,
          number = `Random#`,
          poolid=PoolID,
@@ -421,9 +421,22 @@ library(poLCA)
 
 #latent groups: +/- TF (will build separate model later for TI)
 #Response variables: SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, newindvpcr -- if + all would indicate latent/true trachoma infection
-#covariates: state_code, sex, 
-
-
+#covariates: state_code, sex, age. We may want to do a clustered analysis using state_code (mixed effects linear regression?), but not quite sure how to do this
+#new df with relevant variables
+LCAtf <- master1 %>%
+  dplyr::select(SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn) %>%  #consider adding in later: state_code, age, sex
+  #and recoding as positive integers as required for poLCA
+  mutate(SLR_tf_yn=case_when(SLR_1_tf_yn == 0 ~ as.integer(1),
+                               SLR_1_tf_yn == 1 ~ as.integer(2)),
+         smartphone_tf_yn=case_when(smartphone_1_tf_yn == 0 ~ as.integer(1),
+                                    smartphone_1_tf_yn == 1 ~ as.integer(2)),
+         clinic_tf=case_when(clinic_tf_yn == 0 ~ as.integer(1),
+                             clinic_tf_yn == 1 ~ as.integer(2))) %>%
+  dplyr::select(-SLR_1_tf_yn, -smartphone_1_tf_yn, -clinic_tf_yn)
+#building a function reflecting this
+f <- cbind(LCAtf$SLR_tf_yn, LCAtf$smartphone_tf_yn, LCAtf$clinic_tf) ~ 1
+#model 1
+M1 <- poLCA(f, LCAtf, nclass = 2)
 
 
 
