@@ -46,7 +46,7 @@ master_key <- master_key_import %>%
 
 #cleaning and renaming TIRET 3 PCR
 PCR <- TIRET3_PCR_import %>%
-  select(Group, `Random#`, PoolID, Pool_PCR_Results, Individual_PCR_Results, `Exam(0/1)`, Examiner) %>%
+  select(Group, `Random#`, PoolID, Pool_PCR_Results, Individual_PCR_Results, `Exam(0/1)`, Examiner, Age, gender) %>%
   rename(group = Group,
          number = `Random#`,
          poolid=PoolID,
@@ -139,11 +139,9 @@ xtabs(data = master1, ~SLR_1_tf_yn + clinic_tf_yn + smartphone_1_tf_yn)
 xtabs(data = master1, ~SLR_1_ti_yn + smartphone_1_ti_yn + clinic_ti_yn)
 
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
-#per TL can consider an ICC? JN will redo once final image grades are in
 # Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
     #JN comment--make agreement matrix for 1-4 grading
     #JN comment--?nest by grader to account for grades clustering by grader (included examiner from TIRET data sets)
-
 # Blake
 xtabs(data=master1, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_1, master1$SLR_2_tf_1, conf.level=0.95)
@@ -152,7 +150,6 @@ xtabs(data=master1, ~ SLR_1_tf_di_1 +SLR_2_tf_di_1 , addNA=TRUE)
 CohenKappa(master1$SLR_1_tf_di_1 , master1$SLR_2_tf_di_1 , conf.level=0.95)
 # John
 # Using 4-level, but without weighting 
-# (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
 xtabs(data=master1, ~ SLR_1_tf_2+SLR_2_tf_2, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_2, master1$SLR_2_tf_2, conf.level=0.95)
 # Using dichotomous variable
@@ -160,19 +157,19 @@ xtabs(data=master1, ~ SLR_1_tf_di_2 +SLR_2_tf_di_2 , addNA=TRUE)
 CohenKappa(master1$SLR_1_tf_di_2 , master1$SLR_2_tf_di_2 , conf.level=0.95)
 # Jeremy
 # Using 4-level, but without weighting 
-# (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
 xtabs(data=master1, ~ SLR_1_tf_NA+SLR_2_tf_NA, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_NA, master1$SLR_2_tf_NA, conf.level=0.95)
 # Using dichotomous variable
 xtabs(data=master1, ~ SLR_1_tf_di_NA +SLR_2_tf_di_NA , addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_NA , master1$SLR_2_tf_di_NA , conf.level=0.95)
-
 #TRYING TO REPRODUCE WHAT YOU DID BELOW:
 #JN comment--do we want to do TI?
 #among slr photos john vs blake
 xtabs(data=master1, ~ SLR_1_tf_di_1+SLR_1_tf_di_2, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_1, master1$SLR_1_tf_di_2, conf.level=0.95)
 # among smart photos john vs blake
+xtabs(data = master1, ~smartphone_1_tf_di_1+smartphone_1_tf_di_2, addNA=TRUE)
+CohenKappa(master1$smartphone_1_tf_di_1, master1$smartphone_1_tf_di_2, conf.level=0.95)
 # Blake SLR vs field
 xtabs(data=master1, ~ SLR_1_tf_di_1+clinic_tf_yn, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_1, master1$clinic_tf_yn, conf.level=0.95)
@@ -180,7 +177,11 @@ CohenKappa(master1$SLR_1_tf_di_1, master1$clinic_tf_yn, conf.level=0.95)
 xtabs(data=master1, ~ SLR_1_tf_di_2+clinic_tf_yn, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_2, master1$clinic_tf_yn, conf.level=0.95)
 # Blake smart vs field
+xtabs(data=master1, ~smartphone_1_tf_di_1+clinic_tf_yn, addNA=TRUE)
+CohenKappa(master1$smartphone_1_tf_di_1, master1$clinic_tf_yn, conf.level=0.95)
 # John smart vs field
+xtabs(data=master1, ~smartphone_1_tf_di_2+clinic_tf_yn, addNA=TRUE)
+CohenKappa(master1$smartphone_1_tf_di_2, master1$clinic_tf_yn, conf.level=0.95)
 # Consensus SLR vs field
 xtabs(data=master1, ~ SLR_1_tf_yn+clinic_tf_yn, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_yn, master1$clinic_tf_yn, conf.level=0.95)
@@ -191,17 +192,84 @@ CohenKappa(master1$smartphone_1_tf_yn, master1$clinic_tf_yn, conf.level=0.95)
 xtabs(data=master1, ~ smartphone_1_tf_yn+SLR_1_tf_yn, addNA=TRUE) 
 CohenKappa(master1$smartphone_1_tf_yn, master1$SLR_1_tf_yn, conf.level=0.95)
 
+#JN: Doing an ICC. Best to do an ICC2 (two-way random-effects model), look at absolute agreement
+  #extent to which different graders assign the same score to the same subject (could be wrong on this)
+library(irr)
+  #redoing the CohenK comparisons above
+  #blake repeats
+  #blake slr rep
+master1 %>%
+  select(SLR_1_tf_1, SLR_2_tf_1) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  #blake smart rep
+master1 %>%
+  select(smartphone_1_tf_1, smartphone_2_tf_1) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  #john repeats
+  #johnslrrep
+master1 %>%
+  select(SLR_1_tf_2, SLR_2_tf_2) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  #johnsmartrep 
+master1 %>%
+  select(smartphone_1_tf_2, smartphone_2_tf_2) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  #JK repeats
+  #JK SLR reps
+master1 %>%
+  select(SLR_1_tf_NA, SLR_2_tf_NA) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  #JK smart rep
+master1 %>%
+  select(smartphone_1_tf_NA, smartphone_2_tf_NA) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  #among slr photos john vs blake
+master1 %>%
+  select(SLR_1_tf_di_1, SLR_1_tf_di_2) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # among smart photos john vs blake
+master1 %>%
+  select(smartphone_1_tf_di_1, smartphone_1_tf_di_2) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # Blake SLR vs field
+master1 %>%
+  select(SLR_1_tf_di_1, clinic_tf_yn) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # John SLR vs field
+master1 %>%
+  select(SLR_1_tf_di_2, clinic_tf_yn) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # Blake smart vs field
+master1 %>%
+  select(smartphone_1_tf_di_1, clinic_tf_yn) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # John smart vs field
+master1 %>%
+  select(smartphone_1_tf_di_2, clinic_tf_yn) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # Consensus SLR vs field
+master1 %>%
+  select(SLR_1_tf_yn, clinic_tf_yn) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # Consensus smart vs field
+master1 %>%
+  select(smartphone_1_tf_yn, clinic_tf_yn) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+  # Consensus SLR vs Consensus smartphone
+master1 %>%
+  select(SLR_1_tf_yn, smartphone_1_tf_yn) %>%
+  icc(model = "twoway", type = "agreement", conf.level = 0.95)
+#Did we want to calculate Kappas and ICCs compared to each field grader? 
+
 #now for village level prevalences and boostraped confidence intervals
 #first I have to figure out how to nest all individuals from the same village together
 library(boot)
 set.seed(22) #setting seed to make results replicable
-
 dummy_nest <- master1 %>%
   select(number, id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn, 
          examiner, age, sex, state_code, newindpcr) %>%
   group_by(state_code) %>%
   nest()
-
 #I found this way of booting ci's online so this is method 1
 #making a boot function
 boot_mean <- function(d, i) {
@@ -297,21 +365,8 @@ dummy_boot2 <- dummy_nest %>%
                   smart_ti_upci, clinic_ti_prev, clinic_ti_lowci, clinic_ti_upci))
 glimpse(dummy_boot2) #it works!
     
-#restructuring the prevalences to get the map I want START HERE TOMORROW
+#restructuring the prevalences to get the map I want
 dummy_map <- dummy_boot2 %>%
-  select(state_code:clinic_ti_upci) %>%
-  transmute(slr.tf_prev=slr_tf_prev, slr.tf_lowci=slr_tf_lowci, slr.tf_upci=slr_tf_upci,
-            smart.tf_prev=smart_tf_prev, smart.tf_lowci=smart_tf_lowci, smart.tf_upci=smart_tf_upci,
-            clinic.tf_prev=clinic_tf_prev, clinic.tf_lowci=clinic_tf_lowci, clinic.tf_upci=clinic_tf_upci,
-            slr.ti_prev=slr_ti_prev, slr.ti_lowci=slr_ti_lowci, slr.ti_upci=slr_ti_upci,
-            smart.ti_prev=smart_ti_prev, smart.ti_lowci=smart_ti_lowci, smart.ti_upci=smart_ti_upci,
-            clinic.ti_prev=clinic_ti_prev, clinic.ti_lowci=clinic_ti_lowci, clinic.ti_upci=clinic_ti_upci) %>%
-  gather(field, value, slr.tf_prev:clinic.ti_upci) %>%
-  separate(field, into = c("methodsign", "measure"), sep = "_", convert = TRUE) %>%
-  #separate(methodsign, into = c("method", "sign"), sep = ".", remove = TRUE, convert = TRUE, extra = "merge", fill = "left")
-  spread(value, methodsign)
-
-dummy_map2 <- dummy_boot2 %>%
   select(state_code:clinic_ti_upci) %>%
   transmute(slr_tf_prev=slr_tf_prev, slr_tf_lowci=slr_tf_lowci, slr_tf_upci=slr_tf_upci,
             smart_tf_prev=smart_tf_prev, smart_tf_lowci=smart_tf_lowci, smart_tf_upci=smart_tf_upci,
@@ -322,57 +377,64 @@ dummy_map2 <- dummy_boot2 %>%
   gather(field, value, slr_tf_prev:clinic_ti_upci) %>%
   separate(field, into = c("method", "sign", "measure"), sep = "_", convert = TRUE) %>%
   spread(measure, value)
-  
-geom_errorbar(mapping = aes(x = sign, ymin = lowerCI, ymax = upperCI, position_dodge()))
-ggplot(data = dummy_boot2, aes(x = ))
+
 #Then plot different combinations of prevalences
-#restructuring the tibble so I can make the graphs I want
-dummy_village <- village_prev %>%
-  select(-pcr_prev) %>%  #I chose not to include pcr as only three villages had non-zero prevalences
-  mutate(slr.cons_tf=slr_tf_cons,
-         slr.trump_tf=slr_tf_trump,
-         smart.cons_tf=smart_tf_cons,
-         smart.trump_tf=smart_tf_trump,
-         slr.cons_ti=slr_ti_cons,
-         slr.trump_ti=slr_ti_trump,
-         smart.cons_ti=smart_ti_cons,
-         smart.trump_ti=smart_ti_trump) %>%
-  select(-(slr_tf_cons:smart_tf_trump), -(slr_ti_cons:smart_ti_trump)) %>%
-  gather(field, prevalence, clinic_tf:smart.trump_ti) %>%
-  separate(field, into=c("method", "sign"), sep = "_", remove = TRUE, convert = TRUE)
+  #Graph showing village prev + 95%CIs for TF and TI seperately
+ggplot(data = dummy_map, mapping = aes(x=state_code, y=prev, fill=method)) +
+  geom_bar(position="dodge", stat = "identity") +
+  geom_errorbar(aes(ymin = lowci, ymax = upci), width=0.2, position = position_dodge(0.9)) +
+  facet_wrap(~sign, nrow = 1) +
+  coord_flip()
 
-#overall TF and TI prevalence estimated by different methods
-ggplot(data = dummy_village) +  
-  geom_point(mapping = aes(x = method, y = prevalence, color = sign)) +
-  facet_wrap(~state_code, nrow=2) +
-  coord_flip()
-#showing TF prevalence estimated via different methods for each village
-dummy_village %>%  
-  filter(sign == "tf") %>%
-  ggplot() +
-  geom_bar(mapping = aes(x = method, y = prevalence), stat = "identity") +
-  facet_wrap(~state_code, nrow=2) +
-  coord_flip()
-#showing TI prevalence estimated via different methods for each village
-dummy_village %>%  
-  filter(sign == "ti") %>%
-  ggplot() +
-  geom_bar(mapping = aes(x = method, y = prevalence), stat = "identity") +
-  facet_wrap(~state_code, nrow=2) +
-  coord_flip()
-#overall TF prevalence by different methods
-dummy_village %>%  
-  filter(sign == "tf") %>%
-  ggplot() +
-  geom_bar(mapping = aes(x = method, y = prevalence), stat = "identity") #doesn't seem to be a big difference between trump and consensus
-#overall TI prevalence by different methods
-dummy_village %>%  
-  filter(sign == "tf") %>%
-  ggplot() +
-  geom_bar(mapping = aes(x = method, y = prevalence), stat = "identity") #doesn't seem to be a big difference between trump and consensus
+#Sensitivity/Specificity, Do separately for 2 index tests (smartphone, SLR), alternatively we could do an LCA per TL
+#unsure how to calculate bootstrapped confidence intervals for these so I just used BinomCI
+#Reference standard: TF by field grade
+#SLR
+Conf(x = master1$SLR_1_tf_yn, ref = master1$clinic_tf_yn)
+BinomCI(260, 260+41) #sens CI   est    lwr.ci    upr.ci
+                          # 0.8637874 0.8204256 0.8979806
+BinomCI(144, 155+43) #spec CI   est    lwr.ci    upr.ci
+                          # 0.7272727 0.6613545 0.78454
+#smartphone
+Conf(x = master1$smartphone_1_tf_yn, ref = master1$clinic_tf_yn) #more sensitive for TF than SLR
+BinomCI(279, 279+22) #sens CI   est    lwr.ci    upr.ci
+                          # 0.9269103 0.891821 0.9512402
+BinomCI(127, 127+71) #spec CI   est    lwr.ci    upr.ci
+                          # 0.6414141 0.572506 0.7049395
+#Reference standard: TI by field grade
+#SLR
+Conf(x = master1$SLR_1_ti_yn, ref = master1$clinic_ti_yn)
+BinomCI(417, 417+41) #sens CI   est    lwr.ci    upr.ci
+                          #  0.9104803 0.8808059 0.9333263
+BinomCI(31, 31+10) #spec CI   est    lwr.ci    upr.ci
+                          # 0.7560976 0.6065666 0.86175
+#smartphone
+Conf(x = master1$smartphone_1_ti_yn, ref = master1$clinic_ti_yn) #slightly more sensitive than SLR
+BinomCI(427, 427+31) #sens CI   est    lwr.ci    upr.ci
+                          #  0.9323144 0.9055278 0.9519093
+BinomCI(29, 29+12) #spec CI   est    lwr.ci    upr.ci
+                          # 0.7073171 0.5552053 0.8239081
 
+#Attempting an LCA
+#install.packages("poLCA")
+library(poLCA)
+
+#latent groups: +/- TF (will build separate model later for TI)
+#Response variables: SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, newindvpcr -- if + all would indicate latent/true trachoma infection
+#covariates: state_code, sex, 
+
+
+
+
+
+
+#JN STOPPED HERE
 #Regression/correlation coefficient to assess correlation between prevalences
-  #Specifically looking at 5% threshold for TF, 10% threshold for TF. JN comment: not sure how to set a threshold
+#I think we talked about taking into account how field grades will be clustered by examiner and village, so we could use a mixed effects linear regression
+#but I am not sure this is what you meant... https://m-clark.github.io/mixed-models-with-R/random_intercepts.html
+gradernest <- master1 %>%
+  select(id, SLR_1_tf_1:SLR_1_ti_yn, SLR_2_tf_1:SLR_2_ti_yn, smartphone_1_tf_1:smartphone_1_ti_yn, smartphone_2_tf_1:smartphone_2_ti_yn, newindpcr, examiner) %>%
+  nest(-examiner)
     #Correlations & regressions
 ggplot(data = village_prevalence) +
   geom_point(mapping = aes(x = clinic_tf, y = pcr)) 
@@ -428,54 +490,3 @@ qqplot(x = village_prevalence$clinic_tf, y = village_prevalence$pcr) #I repeated
       lm(clinic_tf ~ pcr, data = village_prevalence) %>%
         summary()
       
-#Sensitivity/Specificity, Do separately for 2 index tests (smartphone, SLR)
-  #Reference standard: TF by field grade
-    #SLR
-Conf(x = photo_pcr_master$SLR_tf_yn_cons, ref = photo_pcr_master$clinic_tf_yn)
-BinomCI(225, 225+29) #sens CI   est    lwr.ci    upr.ci
-                          # 0.8858268 0.8408377 0.9193194
-BinomCI(123, 123+36) #spec CI   est    lwr.ci    upr.ci
-                          # 0.7735849 0.7025283 0.8317336
-Conf(x = photo_pcr_master$SLR_tf_yn_trump, ref = photo_pcr_master$clinic_tf_yn) #quite similar
-    #smartphone
-Conf(x = photo_pcr_master$smart_tf_yn_cons, ref = photo_pcr_master$clinic_tf_yn) #more sensitive for TF than SLR
-BinomCI(241, 241+15) #sens CI   est    lwr.ci    upr.ci
-                          # 0.9414062 0.9055877 0.9641734
-BinomCI(103, 103 + 54) #spec CI   est    lwr.ci    upr.ci
-                            # 0.656051 0.5788177 0.7258301
-Conf(x = photo_pcr_master$smart_tf_yn_trump, ref = photo_pcr_master$clinic_tf_yn)
-  #Reference standard: PCR
-    #SLR
-Conf(x = photo_pcr_master$SLR_tf_yn_cons, ref = photo_pcr_master$newindpcr)
-Conf(x = photo_pcr_master$SLR_tf_yn_trump, ref = photo_pcr_master$newindpcr)
-    #smartphone
-Conf(x = photo_pcr_master$smart_tf_yn_cons, ref = photo_pcr_master$newindpcr)  #pretty specific with good PPV
-Conf(x = photo_pcr_master$smart_tf_yn_trump, ref = photo_pcr_master$newindpcr)
-
-#JN note: I know TF is the most important outcome for public health purposes but I repeated the analysis for TI too
-  #Reference standard: TF by field grade
-    #SLR
-Conf(x = photo_pcr_master$SLR_ti_yn_cons, ref = photo_pcr_master$clinic_ti_yn)
-BinomCI(343, 343+35) #sens CI   est    lwr.ci    upr.ci
-                          #  0.9074074 0.8739479 0.9326696
-BinomCI(27, 27+8) #spec CI   est    lwr.ci    upr.ci
-                          # 0.7714286 0.6098268 0.8793412
-Conf(x = photo_pcr_master$SLR_ti_yn_trump, ref = photo_pcr_master$clinic_ti_yn) #quite similar
-    #smartphone
-Conf(x = photo_pcr_master$smart_ti_yn_cons, ref = photo_pcr_master$clinic_ti_yn) #slightly more sensitive than SLR
-BinomCI(352, 352+26) #sens CI   est    lwr.ci    upr.ci
-                          #  0.9312169 0.901126 0.9526315
-BinomCI(25, 25+10) #spec CI   est    lwr.ci    upr.ci
-                          # 0.7142857 0.5494507 0.8367346
-Conf(x = photo_pcr_master$smart_ti_yn_trump, ref = photo_pcr_master$clinic_ti_yn)
-  #Reference standard: PCR
-    #SLR
-Conf(x = photo_pcr_master$SLR_ti_yn_cons, ref = photo_pcr_master$newindpcr)
-Conf(x = photo_pcr_master$SLR_ti_yn_trump, ref = photo_pcr_master$newindpcr) #same, spec of 1... is this correct?
-    #smartphone
-Conf(x = photo_pcr_master$smart_ti_yn_cons, ref = photo_pcr_master$newindpcr)  #slightly better sens than SLR but worse spec
-Conf(x = photo_pcr_master$smart_ti_yn_trump, ref = photo_pcr_master$newindpcr)
-
-pospcr <- master1 %>%
-  select(newindpcr) %>%
-  filter(newindpcr == 1)
