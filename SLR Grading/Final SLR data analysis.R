@@ -196,18 +196,19 @@ CohenKappa(master1$smartphone_1_tf_yn, master1$SLR_1_tf_yn, conf.level=0.95)
 library(boot)
 set.seed(22) #setting seed to make results replicable
 
+dummy_nest <- master1 %>%
+  select(number, id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn, 
+         examiner, age, sex, state_code, newindpcr) %>%
+  group_by(state_code) %>%
+  nest()
+
 #I found this way of booting ci's online so this is method 1
 #making a boot function
 boot_mean <- function(d, i) {
   mean(d[i])
 }
 
-dummy_boot1 <- master1 %>%
-  #selecting out unused columns--can undo this later
-  select(number, id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn, 
-         examiner, age, sex, state_code, newindpcr) %>%
-  group_by(state_code) %>%
-  nest()  %>%
+dummy_boot1 <- dummy_nest %>%
   #doing just tf for now
   mutate(booted_slr_tf=map(.x=data,
                          ~boot(data = .x$SLR_1_tf_yn,
@@ -259,18 +260,9 @@ dummy_boot1 <- master1 %>%
   select(-data, -booted_slr_tf, -booted_slr_tf_ci, -booted_smart_tf, -booted_smart_tf_ci, -booted_clinic_tf, -booted_clinic_tf_ci) %>%
   unnest()
 
-dummy_nest <- master1 %>%
-  select(number, id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn, 
-         examiner, age, sex, state_code, newindpcr) %>%
-  group_by(state_code) %>%
-  nest()
-
   #method 2
-BootCI(master1$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)
-#this works, but how to iterate it over the relevant elements within the column list tibbles in dummy_nest....
-
 dummy_boot2 <- dummy_nest %>%
-  #not quite sure why but the only way I was able to get it to work was specify the fucntion ~DescTools::BootCI, otherwise I got errors saying I was trying to subset a function...
+  #not quite sure why but the only way I was able to get it to work was specify the fucntion ~DescTools::BootCI
   mutate(slr_tf_boot = map(data, ~DescTools::BootCI(.x$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
          smart_tf_boot = map(data, ~DescTools::BootCI(.x$smartphone_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
          clinic_tf_boot = map(data, ~DescTools::BootCI(.x$clinic_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
@@ -307,17 +299,31 @@ glimpse(dummy_boot2) #it works!
     
 #restructuring the prevalences to get the map I want START HERE TOMORROW
 dummy_map <- dummy_boot2 %>%
-  select(state_code:smart_ti_upci) %>%
+  select(state_code:clinic_ti_upci) %>%
   transmute(slr.tf_prev=slr_tf_prev, slr.tf_lowci=slr_tf_lowci, slr.tf_upci=slr_tf_upci,
-            smart_tf_prev, smart_tf_lowci, smart_tf_upci,
-            clinic_tf_prev, clinic_tf_lowci, clinic_tf_upci,
-            ) %>%
-  gather(field, value, slr.tf_prev:smart_ti_upci) %>%
-  separate(field, into = c("method_sign", "measure"), sep = "_", remove = TRUE, convert = TRUE) %>%
-  separate(method_sign, into = c("method", "sign"), sep = ".", remove = TRUE, convert = TRUE)
+            smart.tf_prev=smart_tf_prev, smart.tf_lowci=smart_tf_lowci, smart.tf_upci=smart_tf_upci,
+            clinic.tf_prev=clinic_tf_prev, clinic.tf_lowci=clinic_tf_lowci, clinic.tf_upci=clinic_tf_upci,
+            slr.ti_prev=slr_ti_prev, slr.ti_lowci=slr_ti_lowci, slr.ti_upci=slr_ti_upci,
+            smart.ti_prev=smart_ti_prev, smart.ti_lowci=smart_ti_lowci, smart.ti_upci=smart_ti_upci,
+            clinic.ti_prev=clinic_ti_prev, clinic.ti_lowci=clinic_ti_lowci, clinic.ti_upci=clinic_ti_upci) %>%
+  gather(field, value, slr.tf_prev:clinic.ti_upci) %>%
+  separate(field, into = c("methodsign", "measure"), sep = "_", convert = TRUE) %>%
+  #separate(methodsign, into = c("method", "sign"), sep = ".", remove = TRUE, convert = TRUE, extra = "merge", fill = "left")
+  spread(value, methodsign)
 
+dummy_map2 <- dummy_boot2 %>%
+  select(state_code:clinic_ti_upci) %>%
+  transmute(slr_tf_prev=slr_tf_prev, slr_tf_lowci=slr_tf_lowci, slr_tf_upci=slr_tf_upci,
+            smart_tf_prev=smart_tf_prev, smart_tf_lowci=smart_tf_lowci, smart_tf_upci=smart_tf_upci,
+            clinic_tf_prev=clinic_tf_prev, clinic_tf_lowci=clinic_tf_lowci, clinic_tf_upci=clinic_tf_upci,
+            slr_ti_prev=slr_ti_prev, slr_ti_lowci=slr_ti_lowci, slr_ti_upci=slr_ti_upci,
+            smart_ti_prev=smart_ti_prev, smart_ti_lowci=smart_ti_lowci, smart_ti_upci=smart_ti_upci,
+            clinic_ti_prev=clinic_ti_prev, clinic_ti_lowci=clinic_ti_lowci, clinic_ti_upci=clinic_ti_upci) %>%
+  gather(field, value, slr_tf_prev:clinic_ti_upci) %>%
+  separate(field, into = c("method", "sign", "measure"), sep = "_", convert = TRUE) %>%
+  spread(measure, value)
   
-    geom_errorbar(mapping = aes(x = sign, ymin = lowerCI, ymax = upperCI, position_dodge()))
+geom_errorbar(mapping = aes(x = sign, ymin = lowerCI, ymax = upperCI, position_dodge()))
 ggplot(data = dummy_boot2, aes(x = ))
 #Then plot different combinations of prevalences
 #restructuring the tibble so I can make the graphs I want
