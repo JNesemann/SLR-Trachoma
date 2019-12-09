@@ -138,6 +138,34 @@ master1 <- SLR_import %>%
 xtabs(data = master1, ~SLR_1_tf_yn + clinic_tf_yn + smartphone_1_tf_yn)
 xtabs(data = master1, ~SLR_1_ti_yn + smartphone_1_ti_yn + clinic_ti_yn)
 
+#summarizing demographic information
+library(purrr)
+demonest <- master1 %>%
+  group_by(sex) %>%
+  nest() %>%
+  mutate(mean_age = map(.x = data, ~mean(x = .x$age)),
+         sd_age = map(.x = data, ~sd(x = .x$age)),
+         clinic_tf = map(data, ~BootCI(.x$clinic_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)))
+         
+         smart_tf = map(.x = data, ~BootCI(.x$smartphone_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         slr_tf = map(.x = data, ~BootCI(.x$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         clinic_ti = map(.x = data, ~BootCI(.x$clinic_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         smart_ti = map(.x = data, ~BootCI(.x$smartphone_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         slr_ti = map(.x = data, ~BootCI(.x$SLR_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)))
+         
+         
+glimpse(demonest$data[1])
+
+mutate(slr_tf_boot = map(data, ~DescTools::BootCI(.x$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000))
+#bootstrapped CIs for sex specific prevalences
+demoF <- master1 %>%
+  filter(sex == "F")
+BootCI()
+
+demoM <- master1 %>%
+  filter(sex == "M")
+            
+
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
 # Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
     #JN comment--make agreement matrix for 1-4 grading
