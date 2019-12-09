@@ -29,6 +29,7 @@ library(readr)
 library(readxl)
 library(DescTools)
 library(irr)
+library(purrr)
 
 #importing
 master_key_import <- read_excel("Masked Number Master Key (1).xlsx")
@@ -139,32 +140,44 @@ xtabs(data = master1, ~SLR_1_tf_yn + clinic_tf_yn + smartphone_1_tf_yn)
 xtabs(data = master1, ~SLR_1_ti_yn + smartphone_1_ti_yn + clinic_ti_yn)
 
 #summarizing demographic information
-library(purrr)
-demonest <- master1 %>%
+demoMF <- master1 %>%
   group_by(sex) %>%
-  nest() %>%
+  summarize(n=n())
+
+set.seed(23) #T in lima 12/9/19
+demonest <- master1 %>%
+  nest(-sex) %>%
   mutate(mean_age = map(.x = data, ~mean(x = .x$age)),
          sd_age = map(.x = data, ~sd(x = .x$age)),
-         clinic_tf = map(data, ~BootCI(.x$clinic_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)))
-         
+         #running bootstrapped mean and CIs 
+         slr_tf = map(data, ~DescTools::BootCI(.$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
          smart_tf = map(.x = data, ~BootCI(.x$smartphone_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
-         slr_tf = map(.x = data, ~BootCI(.x$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
-         clinic_ti = map(.x = data, ~BootCI(.x$clinic_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         clinic_tf = map(data, ~DescTools::BootCI(.x$clinic_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         slr_ti = map(.x = data, ~BootCI(.x$SLR_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
          smart_ti = map(.x = data, ~BootCI(.x$smartphone_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
-         slr_ti = map(.x = data, ~BootCI(.x$SLR_1_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)))
-         
-         
-glimpse(demonest$data[1])
-
-mutate(slr_tf_boot = map(data, ~DescTools::BootCI(.x$SLR_1_tf_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000))
-#bootstrapped CIs for sex specific prevalences
-demoF <- master1 %>%
-  filter(sex == "F")
-BootCI()
-
-demoM <- master1 %>%
-  filter(sex == "M")
-            
+         clinic_ti = map(data, ~DescTools::BootCI(.x$clinic_ti_yn, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000))) %>%
+  #mutating bootstrapped results into their own columns
+  mutate(slr_tf_prev=map(slr_tf, ~.x[1]),
+         slr_tf_low=map(slr_tf, ~.x[2]),
+         slr_tf_up=map(slr_tf, ~.x[3]),
+         smart_tf_prev=map(.x = smart_tf, ~.x[1]),
+         smart_tf_low=map(.x = smart_tf, ~.x[2]),
+         smart_tf_up=map(.x=smart_tf, ~.x[3]),
+         clinic_tf_prev=map(.x = clinic_tf, ~.x[1]),
+         clinic_tf_low=map(.x = clinic_tf, ~.x[2]),
+         clinic_tf_up=map(.x=clinic_tf, ~.x[3]),
+         slr_ti_prev=map(.x = slr_ti, ~.x[1]),
+         slr_ti_low=map(.x = slr_ti, ~.x[2]),
+         slr_ti_up=map(.x=slr_ti, ~.x[3]),
+         smart_ti_prev=map(.x = smart_ti, ~.x[1]),
+         smart_ti_low=map(.x = smart_ti, ~.x[2]),
+         smart_ti_up=map(.x=smart_ti, ~.x[3]),
+         clinic_ti_prev=map(.x = clinic_ti, ~.x[1]),
+         clinic_ti_low=map(.x = clinic_ti, ~.x[2]),
+         clinic_ti_up=map(.x=clinic_ti, ~.x[3])) %>%
+  #removing unecessary columns
+  select(-data, -(slr_tf:clinic_ti)) %>%
+  unnest()
 
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
 # Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
@@ -307,30 +320,30 @@ boot_mean <- function(d, i) {
 dummy_boot1 <- dummy_nest %>%
   #doing just tf for now
   mutate(booted_slr_tf=map(.x=data,
-                         ~boot(data = .x$SLR_1_tf_yn,
+                         ~boot::boot(data = .x$SLR_1_tf_yn,
                                statistic = boot_mean,
                                R = 10000,
                                stype = "i")),
          booted_slr_tf_ci=map(.x=booted_slr_tf,  #this is the list-column containing bootstraped samples from which I will derive my confidence intervals
-                       ~ boot.ci(.x, 
+                       ~boot::boot.ci(.x, 
                                conf = 0.95,
                                type = "basic")), #not sure if basic is the right type to use but it sounds right
          booted_smart_tf=map(.x = data, 
-                            ~boot(data = .x$smartphone_1_tf_yn,
+                            ~boot::boot(data = .x$smartphone_1_tf_yn,
                                statistic = boot_mean,
                                R = 10000,
                                stype = "i")),
          booted_smart_tf_ci=map(.x = booted_smart_tf,
-                            ~ boot.ci(.x,
+                            ~boot::boot.ci(.x,
                                 conf = 0.95,
                                 type = "basic")),
          booted_clinic_tf=map(.x = data,
-                            ~boot(data = .x$clinic_tf_yn,
+                            ~boot::boot(data = .x$clinic_tf_yn,
                                 statistic = boot_mean,
                                 R = 10000,
                                 stype = "i")),
          booted_clinic_tf_ci=map(.x = booted_clinic_tf,
-                             ~ boot.ci(.x,
+                             ~boot::boot.ci(.x,
                                 conf = 0.95,
                                 type = "basic"))) %>%
   #extracting the relative data from the mutated boot_ci
@@ -394,7 +407,7 @@ dummy_boot2 <- dummy_nest %>%
 glimpse(dummy_boot2) #it works!
     
 #restructuring the prevalences to get the map I want
-dummy_map <- dummy_boot2 %>%
+village_prev <- dummy_boot2 %>%
   select(state_code:clinic_ti_upci) %>%
   transmute(slr_tf_prev=slr_tf_prev, slr_tf_lowci=slr_tf_lowci, slr_tf_upci=slr_tf_upci,
             smart_tf_prev=smart_tf_prev, smart_tf_lowci=smart_tf_lowci, smart_tf_upci=smart_tf_upci,
@@ -404,16 +417,46 @@ dummy_map <- dummy_boot2 %>%
             clinic_ti_prev=clinic_ti_prev, clinic_ti_lowci=clinic_ti_lowci, clinic_ti_upci=clinic_ti_upci) %>%
   gather(field, value, slr_tf_prev:clinic_ti_upci) %>%
   separate(field, into = c("method", "sign", "measure"), sep = "_", convert = TRUE) %>%
-  spread(measure, value)
-
+  spread(measure, value) %>%
 #Then plot different combinations of prevalences
   #Graph showing village prev + 95%CIs for TF and TI seperately
-ggplot(data = dummy_map, mapping = aes(x=state_code, y=prev, fill=method)) +
+  ggplot(mapping = aes(x=state_code, y=prev, fill=method)) +
   geom_bar(position="dodge", stat = "identity") +
   geom_errorbar(aes(ymin = lowci, ymax = upci), width=0.2, position = position_dodge(0.9)) +
   facet_wrap(~sign, nrow = 1) +
   coord_flip()
 
+#making separate data table in order to graph overall prevalence estimates
+overall_prev <- master1 %>%
+  select(id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn) %>%
+  transmute(id=id, SLR_tf=SLR_1_tf_yn, smartphone_tf=smartphone_1_tf_yn, clinic_tf=clinic_tf_yn,
+            SLR_ti=SLR_1_ti_yn, smartphone_ti=smartphone_1_ti_yn, clinic_ti=clinic_ti_yn) %>%
+  gather(field, value, SLR_tf:clinic_ti) %>%
+  separate(field, into = c("method", "sign"), sep = "_", convert = TRUE) %>%
+  spread(method, value) %>%
+  group_by(sign) %>%
+  nest() %>%
+  mutate(slr_boot=map(data, ~DescTools::BootCI(.x$SLR, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         smart_boot=map(data, ~DescTools::BootCI(.x$smartphone, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000)),
+         clinic_boot=map(data, ~DescTools::BootCI(.x$clinic, FUN=mean, bci.method = "norm", conf.level = 0.95, sides = "two.sided", R = 1000))) %>%
+  mutate(slr_prev=map(.x=slr_boot, ~.x[1]),
+         slr_low=map(.x=slr_boot, ~.x[2]),
+         slr_up=map(.x=slr_boot, ~.x[3]),
+         smart_prev=map(.x=smart_boot, ~.x[1]),
+         smart_low=map(.x=smart_boot, ~.x[2]),
+         smart_up=map(.x=smart_boot, ~.x[3]),
+         clinic_prev=map(.x=clinic_boot, ~.x[1]),
+         clinic_low=map(.x=clinic_boot, ~.x[2]),
+         clinic_up=map(.x=clinic_boot, ~.x[3])) %>%
+  select(-(data:clinic_boot)) %>%
+  unnest() %>%
+  gather(field, value, slr_prev:clinic_up) %>%
+  separate(field, into = c("method", "measure"), sep = "_") %>%
+  spread(measure, value) %>%
+  ggplot(mapping = aes(x = sign, y = prev, fill = method)) +
+    geom_bar(position="dodge", stat = "identity") +
+    geom_errorbar(aes(ymin = low, ymax = up), width=0.2, position = position_dodge(0.9))
+    
 #Sensitivity/Specificity, Do separately for 2 index tests (smartphone, SLR), alternatively we could do an LCA per TL
 #unsure how to calculate bootstrapped confidence intervals for these so I just used BinomCI
 #Reference standard: TF by field grade
@@ -469,7 +512,7 @@ M1 <- poLCA(f, LCAtf, nclass = 2)
 
 
 
-#JN STOPPED HERE
+#JN STOPPED HERE--OLD CODE
 #Regression/correlation coefficient to assess correlation between prevalences
 #I think we talked about taking into account how field grades will be clustered by examiner and village, so we could use a mixed effects linear regression
 #but I am not sure this is what you meant... https://m-clark.github.io/mixed-models-with-R/random_intercepts.html
@@ -530,4 +573,3 @@ qqplot(x = village_prevalence$clinic_tf, y = village_prevalence$pcr) #I repeated
       Cor(x = village_prevalence$clinic_tf, y = village_prevalence$pcr, method = c("spearman"), use = "complete.obs")
       lm(clinic_tf ~ pcr, data = village_prevalence) %>%
         summary()
-      
