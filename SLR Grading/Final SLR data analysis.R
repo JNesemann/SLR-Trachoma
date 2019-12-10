@@ -134,6 +134,9 @@ master1 <- SLR_import %>%
 xtabs(data = master1, ~SLR_1_tf_yn + clinic_tf_yn + smartphone_1_tf_yn)
 xtabs(data = master1, ~SLR_1_ti_yn + smartphone_1_ti_yn + clinic_ti_yn)
 
+#xtabs determining which villages had positive PCR
+xtabs(data=master1, ~state_code + newindpcr)
+
 #summarizing demographic information
 demoMF <- master1 %>%
   group_by(sex) %>%
@@ -181,7 +184,6 @@ agreement_matrix <- tibble(
   "2" = c(0.9, 1, 0.5, 0.2),
   "3" = c(0.2, 0.5, 1, 0.9),
   "4" = c(0.1, 0.2, 0.9, 1))
-    #JN comment--there are 9 field graders, do we want to compute kappas/ICC compared to each individual field grader?
 # Blake
 xtabs(data=master1, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_1, master1$SLR_2_tf_1, conf.level=0.95)
@@ -203,7 +205,6 @@ CohenKappa(master1$SLR_1_tf_NA, master1$SLR_2_tf_NA, conf.level=0.95)
 xtabs(data=master1, ~ SLR_1_tf_di_NA +SLR_2_tf_di_NA , addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_NA , master1$SLR_2_tf_di_NA , conf.level=0.95)
 #TRYING TO REPRODUCE WHAT YOU DID BELOW:
-#JN comment--do we want to do TI?
 #among slr photos john vs blake
 xtabs(data=master1, ~ SLR_1_tf_di_1+SLR_1_tf_di_2, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_1, master1$SLR_1_tf_di_2, conf.level=0.95)
@@ -231,6 +232,23 @@ CohenKappa(master1$smartphone_1_tf_yn, master1$clinic_tf_yn, conf.level=0.95)
 # Consensus SLR vs Consensus smartphone
 xtabs(data=master1, ~ smartphone_1_tf_yn+SLR_1_tf_yn, addNA=TRUE) 
 CohenKappa(master1$smartphone_1_tf_yn, master1$SLR_1_tf_yn, conf.level=0.95)
+#JN comment--doing for TI
+#among slr photos john vs blake
+xtabs(data=master1, ~ SLR_1_ti_di_1+SLR_1_ti_di_2, addNA=TRUE) 
+CohenKappa(master1$SLR_1_ti_di_1, master1$SLR_1_ti_di_2, conf.level=0.95)
+# among smart photos john vs blake
+xtabs(data = master1, ~smartphone_1_ti_di_1+smartphone_1_ti_di_2, addNA=TRUE)
+CohenKappa(master1$smartphone_1_ti_di_1, master1$smartphone_1_ti_di_2, conf.level=0.95)
+# Consensus SLR vs field
+xtabs(data=master1, ~ SLR_1_ti_yn+clinic_ti_yn, addNA=TRUE) 
+CohenKappa(master1$SLR_1_ti_yn, master1$clinic_ti_yn, conf.level=0.95)
+# Consensus smart vs field
+xtabs(data=master1, ~ smartphone_1_ti_yn+clinic_ti_yn, addNA=TRUE) 
+CohenKappa(master1$smartphone_1_ti_yn, master1$clinic_ti_yn, conf.level=0.95)
+
+#JN comment--there are 9 field graders, going to calculate a fleiss' kappa for them
+field_exam <- master1 %>%
+  group_by(examiner)
 
 #JN: Doing an ICC. Best to do an ICC2 (two-way random-effects model), look at absolute agreement
   #extent to which different graders assign the same score to the same subject (could be wrong on this)
