@@ -36,7 +36,6 @@ master_key_import <- read_excel("Masked Number Master Key (1).xlsx")
 TIRET3_PCR_import <- read_excel("TIRET3_PCR_for John.xlsx")
 SLR_import <- read_csv("SLRTrachoma_DATA_2019-11-27_1325.csv")
 TIRET3_PhotoExamData13Villages <- read_excel("TIRET3-PhotoExamDatain13Villages.xlsx")
-skim(TIRET3_PhotoExamData13Villages)  #this dataset has 13 unique stateteam-codes, corresponds to the 13 villages
 
 #cleaning master key
 master_key <- master_key_import %>%
@@ -77,13 +76,9 @@ TIRET3_villages <- TIRET3_PhotoExamData13Villages %>%
                   clinic_tf_yn = if_else(!is.na(clinical_exam), as.numeric(grepl("TF", clinical_exam)), NA_real_),
                   clinic_tfti_yn = if_else(!is.na(clinical_exam), as.numeric(grepl("TF/TI", clinical_exam)), NA_real_),
                   number=as.numeric(number))
-skim(TIRET3_villages)    #JN: even when using this data set to calculate clinical grades we are still missing grades for 80 individuals...
 
 #merging PCR data with complete data in TIRET3_PhotoExamData13Villages, this will provide the stateteam-code which I am using as a proxy for village ID
 PCR_exam <- full_join(PCR, TIRET3_villages, by = "number")
-skim(PCR)
-skim(TIRET3_villages)
-skim(PCR_exam)
 
 #creating one large dataset 
 master1 <- SLR_import %>%
@@ -144,7 +139,7 @@ demoMF <- master1 %>%
   group_by(sex) %>%
   summarize(n=n())
 
-set.seed(23) #T in lima 12/9/19
+set.seed(23) #Temp in lima 12/9/19
 demonest <- master1 %>%
   nest(-sex) %>%
   mutate(mean_age = map(.x = data, ~mean(x = .x$age)),
@@ -181,8 +176,12 @@ demonest <- master1 %>%
 
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
 # Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
-    #JN comment--make agreement matrix for 1-4 grading
-    #JN comment--?nest by grader to account for grades clustering by grader (included examiner from TIRET data sets)
+agreement_matrix <- tibble(
+  "1" = c(1, 0.9, 0.2, 0.1),
+  "2" = c(0.9, 1, 0.5, 0.2),
+  "3" = c(0.2, 0.5, 1, 0.9),
+  "4" = c(0.1, 0.2, 0.9, 1))
+    #JN comment--there are 9 field graders, do we want to compute kappas/ICC compared to each individual field grader?
 # Blake
 xtabs(data=master1, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_1, master1$SLR_2_tf_1, conf.level=0.95)
@@ -235,8 +234,7 @@ CohenKappa(master1$smartphone_1_tf_yn, master1$SLR_1_tf_yn, conf.level=0.95)
 
 #JN: Doing an ICC. Best to do an ICC2 (two-way random-effects model), look at absolute agreement
   #extent to which different graders assign the same score to the same subject (could be wrong on this)
-library(irr)
-  #redoing the CohenK comparisons above
+  #redoing the comparisons above
   #blake repeats
   #blake slr rep
 master1 %>%
@@ -300,12 +298,12 @@ master1 %>%
 master1 %>%
   select(SLR_1_tf_yn, smartphone_1_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
-#Did we want to calculate Kappas and ICCs compared to each field grader? 
+#Did we want to calculate Kappas and ICCs compared to each field grader (there are 9 of them)? 
 
 #now for village level prevalences and boostraped confidence intervals
 #first I have to figure out how to nest all individuals from the same village together
 library(boot)
-set.seed(22) #setting seed to make results replicable
+set.seed(22) #Temp in Lima 12/6/19
 dummy_nest <- master1 %>%
   select(number, id, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn, 
          examiner, age, sex, state_code, newindpcr) %>%
@@ -406,7 +404,7 @@ dummy_boot2 <- dummy_nest %>%
                   smart_ti_upci, clinic_ti_prev, clinic_ti_lowci, clinic_ti_upci))
 glimpse(dummy_boot2) #it works!
     
-#restructuring the prevalences to get the map I want
+#restructuring the prevalences to get the graph I want
 village_prev <- dummy_boot2 %>%
   select(state_code:clinic_ti_upci) %>%
   transmute(slr_tf_prev=slr_tf_prev, slr_tf_lowci=slr_tf_lowci, slr_tf_upci=slr_tf_upci,
@@ -418,7 +416,6 @@ village_prev <- dummy_boot2 %>%
   gather(field, value, slr_tf_prev:clinic_ti_upci) %>%
   separate(field, into = c("method", "sign", "measure"), sep = "_", convert = TRUE) %>%
   spread(measure, value) %>%
-#Then plot different combinations of prevalences
   #Graph showing village prev + 95%CIs for TF and TI seperately
   ggplot(mapping = aes(x=state_code, y=prev, fill=method)) +
   geom_bar(position="dodge", stat = "identity") +
@@ -457,7 +454,7 @@ overall_prev <- master1 %>%
     geom_bar(position="dodge", stat = "identity") +
     geom_errorbar(aes(ymin = low, ymax = up), width=0.2, position = position_dodge(0.9))
     
-#Sensitivity/Specificity, Do separately for 2 index tests (smartphone, SLR), alternatively we could do an LCA per TL
+#Sensitivity/Specificity, Do separately for 2 index tests (smartphone, SLR), alternatively we could do an LCA per TL--JN Tried below but was unable to
 #unsure how to calculate bootstrapped confidence intervals for these so I just used BinomCI
 #Reference standard: TF by field grade
 #SLR
@@ -466,12 +463,16 @@ BinomCI(260, 260+41) #sens CI   est    lwr.ci    upr.ci
                           # 0.8637874 0.8204256 0.8979806
 BinomCI(144, 155+43) #spec CI   est    lwr.ci    upr.ci
                           # 0.7272727 0.6613545 0.78454
+                      #Pos Pred Value : 0.8581
+                      # Neg Pred Value : 0.7908
 #smartphone
 Conf(x = master1$smartphone_1_tf_yn, ref = master1$clinic_tf_yn) #more sensitive for TF than SLR
 BinomCI(279, 279+22) #sens CI   est    lwr.ci    upr.ci
                           # 0.9269103 0.891821 0.9512402
 BinomCI(127, 127+71) #spec CI   est    lwr.ci    upr.ci
                           # 0.6414141 0.572506 0.7049395
+                      #Pos Pred Value : 0.7971
+                      #Neg Pred Value : 0.8523
 #Reference standard: TI by field grade
 #SLR
 Conf(x = master1$SLR_1_ti_yn, ref = master1$clinic_ti_yn)
@@ -479,12 +480,16 @@ BinomCI(417, 417+41) #sens CI   est    lwr.ci    upr.ci
                           #  0.9104803 0.8808059 0.9333263
 BinomCI(31, 31+10) #spec CI   est    lwr.ci    upr.ci
                           # 0.7560976 0.6065666 0.86175
+                    #Pos Pred Value : 0.9766
+                    #Neg Pred Value : 0.4306
 #smartphone
 Conf(x = master1$smartphone_1_ti_yn, ref = master1$clinic_ti_yn) #slightly more sensitive than SLR
 BinomCI(427, 427+31) #sens CI   est    lwr.ci    upr.ci
                           #  0.9323144 0.9055278 0.9519093
 BinomCI(29, 29+12) #spec CI   est    lwr.ci    upr.ci
                           # 0.7073171 0.5552053 0.8239081
+                    #Pos Pred Value : 0.9727
+                    #Neg Pred Value : 0.4833
 
 #Attempting an LCA
 #install.packages("poLCA")
@@ -507,8 +512,7 @@ LCAtf <- master1 %>%
 #building a function reflecting this
 f <- cbind(LCAtf$SLR_tf_yn, LCAtf$smartphone_tf_yn, LCAtf$clinic_tf) ~ 1
 #model 1
-M1 <- poLCA(f, LCAtf, nclass = 2)
-
+M1 <- poLCA(f, LCAtf, nclass = 2) #still not working for me
 
 
 
