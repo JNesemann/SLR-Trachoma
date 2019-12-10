@@ -325,7 +325,7 @@ dummy_boot1 <- dummy_nest %>%
          booted_slr_tf_ci=map(.x=booted_slr_tf,  #this is the list-column containing bootstraped samples from which I will derive my confidence intervals
                        ~boot::boot.ci(.x, 
                                conf = 0.95,
-                               type = "basic")), #not sure if basic is the right type to use but it sounds right
+                               type = "basic")), #not sure if basic is the right type to use
          booted_smart_tf=map(.x = data, 
                             ~boot::boot(data = .x$smartphone_1_tf_yn,
                                statistic = boot_mean,
