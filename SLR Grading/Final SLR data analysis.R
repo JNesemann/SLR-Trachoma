@@ -177,6 +177,8 @@ demonest <- master1 %>%
   select(-data, -(slr_tf:clinic_ti)) %>%
   unnest()
 
+#do chi-squared
+
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
 # Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
 agreement_matrix <- tibble(
@@ -246,9 +248,14 @@ CohenKappa(master1$SLR_1_ti_yn, master1$clinic_ti_yn, conf.level=0.95)
 xtabs(data=master1, ~ smartphone_1_ti_yn+clinic_ti_yn, addNA=TRUE) 
 CohenKappa(master1$smartphone_1_ti_yn, master1$clinic_ti_yn, conf.level=0.95)
 
-#JN comment--there are 9 field graders, going to calculate a fleiss' kappa for them
+#JN comment--there are 9 field graders, going to calculate a Fleiss' kappa for them
+  #Fleiss' kappa specifically allows that although there are a fixed number of raters (e.g., 9), different items may be rated by different individuals
+  #another option is Krippendorff's alpha
 field_exam <- master1 %>%
-  group_by(examiner)
+  select(id, examiner, clinic_ti_yn, clinic_tf_yn) %>%
+  group_by(examiner) %>%
+  gather(field, value, examiner:clinic_tf_yn) %>%
+  spread(field, value)
 
 #JN: Doing an ICC. Best to do an ICC2 (two-way random-effects model), look at absolute agreement
   #extent to which different graders assign the same score to the same subject (could be wrong on this)
@@ -421,6 +428,8 @@ dummy_boot2 <- dummy_nest %>%
                   slr_ti_prev, slr_ti_lowci, slr_ti_upci, smart_ti_prev, smart_ti_lowci, 
                   smart_ti_upci, clinic_ti_prev, clinic_ti_lowci, clinic_ti_upci))
 glimpse(dummy_boot2) #it works!
+
+cor.test(dummy_boot2$slr_tf_prev, dummy_boot2$smart_tf_prev, alternative = "two.sided", method = "spearman", conf.level = 0.95)
     
 #restructuring the prevalences to get the graph I want
 village_prev <- dummy_boot2 %>%
@@ -433,13 +442,16 @@ village_prev <- dummy_boot2 %>%
             clinic_ti_prev=clinic_ti_prev, clinic_ti_lowci=clinic_ti_lowci, clinic_ti_upci=clinic_ti_upci) %>%
   gather(field, value, slr_tf_prev:clinic_ti_upci) %>%
   separate(field, into = c("method", "sign", "measure"), sep = "_", convert = TRUE) %>%
-  spread(measure, value) %>%
+  spread(measure, value)
+
   #Graph showing village prev + 95%CIs for TF and TI seperately
-  ggplot(mapping = aes(x=state_code, y=prev, fill=method)) +
+  ggplot(data = village_prev, mapping = aes(x=state_code, y=prev, fill=method)) +
   geom_bar(position="dodge", stat = "identity") +
   geom_errorbar(aes(ymin = lowci, ymax = upci), width=0.2, position = position_dodge(0.9)) +
   facet_wrap(~sign, nrow = 1) +
   coord_flip()
+
+xtabs(data = master1, ~state_code + sex)
 
 #making separate data table in order to graph overall prevalence estimates
 overall_prev <- master1 %>%
@@ -467,8 +479,9 @@ overall_prev <- master1 %>%
   unnest() %>%
   gather(field, value, slr_prev:clinic_up) %>%
   separate(field, into = c("method", "measure"), sep = "_") %>%
-  spread(measure, value) %>%
-  ggplot(mapping = aes(x = sign, y = prev, fill = method)) +
+  spread(measure, value)
+
+  ggplot(data = overall_prev, mapping = aes(x = sign, y = prev, fill = method)) +
     geom_bar(position="dodge", stat = "identity") +
     geom_errorbar(aes(ymin = low, ymax = up), width=0.2, position = position_dodge(0.9))
     
@@ -532,15 +545,13 @@ f <- cbind(LCAtf$SLR_tf_yn, LCAtf$smartphone_tf_yn, LCAtf$clinic_tf) ~ 1
 #model 1
 M1 <- poLCA(f, LCAtf, nclass = 2) #still not working for me
 
-
+Cor(x = master1$SLR_1_tf_yn, y=master1$smartphone_1_tf_yn, method = c("pearson"), use = "complete.obs")
 
 #JN STOPPED HERE--OLD CODE
 #Regression/correlation coefficient to assess correlation between prevalences
 #I think we talked about taking into account how field grades will be clustered by examiner and village, so we could use a mixed effects linear regression
 #but I am not sure this is what you meant... https://m-clark.github.io/mixed-models-with-R/random_intercepts.html
-gradernest <- master1 %>%
-  select(id, SLR_1_tf_1:SLR_1_ti_yn, SLR_2_tf_1:SLR_2_ti_yn, smartphone_1_tf_1:smartphone_1_ti_yn, smartphone_2_tf_1:smartphone_2_ti_yn, newindpcr, examiner) %>%
-  nest(-examiner)
+
     #Correlations & regressions
 ggplot(data = village_prevalence) +
   geom_point(mapping = aes(x = clinic_tf, y = pcr)) 
