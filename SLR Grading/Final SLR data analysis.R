@@ -1,27 +1,13 @@
 #Final SLR Data analysis
 
-#Analyses of interest:
-  #Kappas:
-    #among slr photos john vs blake--JN: Done
-    #among smartphone photos john vs blake--JN: Done
-    #among slr repeat photos john vs john, blake vs blake (we can eventually combine in an ICC maybe)--JN: Done
-    #among smartphone repeat photos john vs john, blake vs blake (we can eventually combine in an ICC maybe)--JN: Done
-    #consensus/trump grade smartphone vs consensus SLR--JN: Done
-    #JN: I also compared all of the above to field grades
-  #Village-level
-    #Prevalence of TF, TI, TF+/-TI per village.
-      #SLR: JN Done
-      #Smartphone  JN done
-      #PCR  JN done
-    #Then plot different combinations of prevalences JN done
-    #Regression/correlation coefficient to assess correlation between prevalences
-    #Specifically looking at 5% threshold for TF, 10% threshold for TF
-  #Sensitivity/Specificity--JN Done
-      #Reference standard: TF by field grade--JN Done
-      #Reference standard: PCR--JN Done
-      #Do separately for 2 index tests (smartphone, SLR)
-#Remember also: let’s try 2 different formulas for consensus photo grades: one in which I trump you two--JN: done
-          # and the other where it’s a consensus. I’d be curious how often these are different--JN: done
+#JN to do:
+  #likelihood ration or PPV/NPV of test
+  #change village level prevalence CIs to binomial
+  #stratify by age and compare SLR smartphone (SLR probs better for 0-2yo)
+  #comparing SLR/field vs smartphone/field kappas--wrtie function in R that calculates difference in ks then bootstrap the difference. is it 0 or not?
+  #Wilcoxon sign rank test to compare paired prevalence estimates for each village
+  #figure out an LCA and use gold standard to calculate sens and spec
+  #bootstrap CIs around sens/spec calculations-use "yardstick" in the code JK sent
 
 library(tidyverse)
 library(skimr)
@@ -130,10 +116,10 @@ john_missing_ti <- blake %>% #0
   select(id, quality_2, tf_2, tf_di_2, ti_2, ti_di_2) %>%
   filter(quality_2 %in% c(1,2) & is.na(ti_2))
 
+#checking work wih the numbers JK provided over email
 blake_redo <- master1 %>%
   filter(number %in% c(553460, 232594, 266021, 631939, 702051, 761007, 869108, 190143, 436895, 822644)) %>%
   select(number, SLR_1_id, SLR_2_id, smartphone_1_id, smartphone_2_id)
-#SLR_1_quality_1:SLR_1_ti_yn
 
 JK_numbs <- blake %>%  
   filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
@@ -143,7 +129,7 @@ blake_redo_import <- blake %>%
   filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
   select(id:quality_NA, tf_1:ti_NA) %>%
   filter(quality_2 %in% c(1,2) & quality_NA %in% c(1,2))
-#quality doisagreement blake: 104, 533, 542, 1092
+#quality disagreement blake: 104, 533, 542, 1092. note: JN ADD 51 FOR BLAKE
 #Missing blake: 50, 99, 260 + 60
 
 john_redo_import <- blake %>%  
