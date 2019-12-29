@@ -80,6 +80,79 @@ TIRET3_villages <- TIRET3_PhotoExamData13Villages %>%
 #merging PCR data with complete data in TIRET3_PhotoExamData13Villages, this will provide the stateteam-code which I am using as a proxy for village ID
 PCR_exam <- full_join(PCR, TIRET3_villages, by = "number")
 
+#determine when JK and I have grades and Blake does not (i.e., B said image was ungradeable,  JK and J graded)
+blake <- SLR_import %>%
+  rename(id = record_id,
+         complete = trachoma_grading_complete) %>%
+  mutate(tf_di=if_else(tf %in% c(1, 2),1,if_else(tf %in% c(3, 4),0,NA_real_)),
+         ti_di=if_else(ti %in% c(1, 2),1,if_else(ti %in% c(3, 4),0,NA_real_))) %>%
+  separate(id, into = c("id", "dde"), sep = "--", remove = TRUE, convert = TRUE) %>%
+  filter(!(grepl("est", id))) %>%
+  mutate(id=as.numeric(id)) %>%
+  group_by(id) %>%
+  mutate(sumtf=sum(tf_di, na.rm=TRUE),
+         sumti=sum(ti_di, na.rm=TRUE),
+         totalid=n(),
+         tf_yn=case_when(totalid==3 & sumtf>=2 ~ 1,
+                         totalid==3 & sumtf<2 ~ 0,
+                         totalid==2 & sumtf==2 ~ 1,
+                         totalid==2 & sumtf==0 ~ 0,
+                         TRUE ~ NA_real_),
+         ti_yn=case_when(totalid==3 & sumti>=2 ~ 1,
+                         totalid==3 & sumti<2 ~ 0,
+                         totalid==2 & sumti==2 ~ 1,
+                         totalid==2 & sumti==0 ~ 0,
+                         TRUE ~ NA_real_)) %>%
+  select(-complete, -sumtf, -sumti, -totalid) %>%
+  select(id, tf_yn, ti_yn, dde, tf_di, ti_di, everything()) %>% 
+  gather(field, value, tf_di:notes) %>%
+  mutate(field_dde = paste(field, dde, sep = "_")) %>%
+  select(-field, -dde) %>%
+  spread(field_dde, value, convert = TRUE) %>%
+  select(id, quality_1:quality_NA, tf_1:ti_NA) 
+
+blake_redo <- blake %>% #51, 104, 533, 542, 1092
+  filter(quality_2 %in% c(1,2) & quality_NA %in% c(1,2), quality_1 %in% c(3,4))
+  
+blake_missing_tf <- blake %>% #50, 60, 99, 260
+  select(id, quality_1, tf_1, tf_di_1, ti_1, ti_di_1) %>%
+  filter(quality_1 %in% c(1,2) & is.na(tf_1))
+
+blake_missing_ti <- blake %>% #50, 60, 99, 260
+  select(id, quality_1, tf_1, tf_di_1, ti_1, ti_di_1) %>%
+  filter(quality_1 %in% c(1,2) & is.na(ti_1))
+
+john_missing_tf <- blake %>% #0
+  select(id, quality_2, tf_2, tf_di_2, ti_2, ti_di_2) %>%
+  filter(quality_2 %in% c(1,2) & is.na(tf_2))
+
+john_missing_ti <- blake %>% #0
+  select(id, quality_2, tf_2, tf_di_2, ti_2, ti_di_2) %>%
+  filter(quality_2 %in% c(1,2) & is.na(ti_2))
+
+blake_redo <- master1 %>%
+  filter(number %in% c(553460, 232594, 266021, 631939, 702051, 761007, 869108, 190143, 436895, 822644)) %>%
+  select(number, SLR_1_id, SLR_2_id, smartphone_1_id, smartphone_2_id)
+#SLR_1_quality_1:SLR_1_ti_yn
+
+JK_numbs <- blake %>%  
+  filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
+  select(id:quality_NA, tf_di_1:tf_di_NA, ti_di_1:ti_di_NA)
+
+blake_redo_import <- blake %>%  
+  filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
+  select(id:quality_NA, tf_1:ti_NA) %>%
+  filter(quality_2 %in% c(1,2) & quality_NA %in% c(1,2))
+#quality doisagreement blake: 104, 533, 542, 1092
+#Missing blake: 50, 99, 260 + 60
+
+john_redo_import <- blake %>%  
+  filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
+  select(id:quality_NA, tf_1:ti_NA) %>%
+  filter(quality_1 %in% c(1,2) & quality_NA %in% c(1,2))
+#JN qual disagreement: 103, 131, 786
+#JN missing: 0
+
 #creating one large dataset 
 master1 <- SLR_import %>%
   #clean and separate graders 1 and 2
@@ -176,8 +249,6 @@ demonest <- master1 %>%
   #removing unecessary columns
   select(-data, -(slr_tf:clinic_ti)) %>%
   unnest()
-
-#do chi-squared
 
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
 # Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
