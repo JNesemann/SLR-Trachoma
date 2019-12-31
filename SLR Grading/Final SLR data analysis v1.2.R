@@ -2,13 +2,15 @@
 
 #To do:
   #do bootstrapping for TI - JN Done
-  #likelihood ration or PPV/NPV of test - 
+  #likelihood ration or PPV/NPV of test - JN Done w/ bca
   #change village level prevalence CIs to binomial and do for TI - JN done
   #Wilcoxon sign rank test to compare paired prevalence estimates for each village ?and overall? - JN Done
-  #stratify by age and compare SLR vs smartphone for TI and TF prevalence (SLR probs better for 0-2yo)
-  #comparing SLR/field vs smartphone/field kappas--wrtie function in R that calculates difference in ks then bootstrap the difference. is it 0 or not?
-  #figure out an LCA and use gold standard to calculate sens and spec
-  #bootstrap CIs around sens/spec calculations-use "yardstick" in the code JK sent - 
+  #stratify by age and compare SLR vs smartphone for TI and TF prevalence (SLR probs better for 0-2yo) - 
+  #comparing SLR/field vs smartphone/field kappas--wrtie function in R that calculates difference in ks then bootstrap the difference. 
+    #is it 0 or not? - 
+  #figure out an LCA as gold standard - JN Done
+  #bootstrap CIs around sens/spec calculations using "yardstick" package - JN Done with bcas
+  #use LCA gold standard to calculate sens and spec - 
 
 library(tidyverse)
 library(skimr)
@@ -18,7 +20,9 @@ library(DescTools)
 library(irr)
 library(purrr)
 
-#importing
+################################
+##     IMPORT AND CLEAN      ##
+################################
 master_key_import <- read_excel("Masked Number Master Key (1).xlsx")
 TIRET3_PCR_import <- read_excel("TIRET3_PCR_for John.xlsx")
 SLR_import <- read_csv("SLRTrachoma_DATA_2019-11-27_1325.csv")
@@ -26,14 +30,14 @@ TIRET3_PhotoExamData13Villages <- read_excel("TIRET3-PhotoExamDatain13Villages.x
 
 #cleaning master key
 master_key <- master_key_import %>%
-  select(number, camera, `masked number`, `repeat`) %>%
+  dplyr::select(number, camera, `masked number`, `repeat`) %>%
   rename(mask = `masked number`,
          repeat.instance=`repeat`) %>%
   mutate(repeat.instance=if_else(is.na(repeat.instance), 1, repeat.instance))
 
 #cleaning and renaming TIRET 3 PCR
 PCR <- TIRET3_PCR_import %>%
-  select(Group, `Random#`, PoolID, Pool_PCR_Results, Individual_PCR_Results, `Exam(0/1)`, Examiner) %>%
+  dplyr::select(Group, `Random#`, PoolID, Pool_PCR_Results, Individual_PCR_Results, `Exam(0/1)`, Examiner) %>%
   rename(group = Group,
          number = `Random#`,
          poolid=PoolID,
@@ -48,7 +52,7 @@ PCR <- TIRET3_PCR_import %>%
 
 #cleaning and renaming TIRET3_PhotoExamData13Villages
 TIRET3_villages <- TIRET3_PhotoExamData13Villages %>%
-  select(Clinicalexam, Photo, `Random#`, Sex, `Stateteam-code`, Tuber, Age, ID) %>%
+  dplyr::select(Clinicalexam, Photo, `Random#`, Sex, `Stateteam-code`, Tuber, Age, ID) %>%
   rename(number = `Random#`,
          id=ID,
          clinical_exam = Clinicalexam,
@@ -66,79 +70,6 @@ TIRET3_villages <- TIRET3_PhotoExamData13Villages %>%
 
 #merging PCR data with complete data in TIRET3_PhotoExamData13Villages, this will provide the stateteam-code which I am using as a proxy for village ID
 PCR_exam <- full_join(PCR, TIRET3_villages, by = "number")
-
-#determine when JK and I have grades and Blake does not (i.e., B said image was ungradeable,  JK and J graded)
-blake <- SLR_import %>%
-  rename(id = record_id,
-         complete = trachoma_grading_complete) %>%
-  mutate(tf_di=if_else(tf %in% c(1, 2),1,if_else(tf %in% c(3, 4),0,NA_real_)),
-         ti_di=if_else(ti %in% c(1, 2),1,if_else(ti %in% c(3, 4),0,NA_real_))) %>%
-  separate(id, into = c("id", "dde"), sep = "--", remove = TRUE, convert = TRUE) %>%
-  filter(!(grepl("est", id))) %>%
-  mutate(id=as.numeric(id)) %>%
-  group_by(id) %>%
-  mutate(sumtf=sum(tf_di, na.rm=TRUE),
-         sumti=sum(ti_di, na.rm=TRUE),
-         totalid=n(),
-         tf_yn=case_when(totalid==3 & sumtf>=2 ~ 1,
-                         totalid==3 & sumtf<2 ~ 0,
-                         totalid==2 & sumtf==2 ~ 1,
-                         totalid==2 & sumtf==0 ~ 0,
-                         TRUE ~ NA_real_),
-         ti_yn=case_when(totalid==3 & sumti>=2 ~ 1,
-                         totalid==3 & sumti<2 ~ 0,
-                         totalid==2 & sumti==2 ~ 1,
-                         totalid==2 & sumti==0 ~ 0,
-                         TRUE ~ NA_real_)) %>%
-  select(-complete, -sumtf, -sumti, -totalid) %>%
-  select(id, tf_yn, ti_yn, dde, tf_di, ti_di, everything()) %>% 
-  gather(field, value, tf_di:notes) %>%
-  mutate(field_dde = paste(field, dde, sep = "_")) %>%
-  select(-field, -dde) %>%
-  spread(field_dde, value, convert = TRUE) %>%
-  select(id, quality_1:quality_NA, tf_1:ti_NA) 
-
-blake_redo <- blake %>% #51, 104, 533, 542, 1092
-  filter(quality_2 %in% c(1,2) & quality_NA %in% c(1,2), quality_1 %in% c(3,4))
-  
-blake_missing_tf <- blake %>% #50, 60, 99, 260
-  select(id, quality_1, tf_1, tf_di_1, ti_1, ti_di_1) %>%
-  filter(quality_1 %in% c(1,2) & is.na(tf_1))
-
-blake_missing_ti <- blake %>% #50, 60, 99, 260
-  select(id, quality_1, tf_1, tf_di_1, ti_1, ti_di_1) %>%
-  filter(quality_1 %in% c(1,2) & is.na(ti_1))
-
-john_missing_tf <- blake %>% #0
-  select(id, quality_2, tf_2, tf_di_2, ti_2, ti_di_2) %>%
-  filter(quality_2 %in% c(1,2) & is.na(tf_2))
-
-john_missing_ti <- blake %>% #0
-  select(id, quality_2, tf_2, tf_di_2, ti_2, ti_di_2) %>%
-  filter(quality_2 %in% c(1,2) & is.na(ti_2))
-
-#checking work wih the numbers JK provided over email
-blake_redo <- master1 %>%
-  filter(number %in% c(553460, 232594, 266021, 631939, 702051, 761007, 869108, 190143, 436895, 822644)) %>%
-  select(number, SLR_1_id, SLR_2_id, smartphone_1_id, smartphone_2_id)
-
-JK_numbs <- blake %>%  
-  filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
-  select(id:quality_NA, tf_di_1:tf_di_NA, ti_di_1:ti_di_NA)
-
-blake_redo_import <- blake %>%  
-  filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
-  select(id:quality_NA, tf_1:ti_NA) %>%
-  filter(quality_2 %in% c(1,2) & quality_NA %in% c(1,2))
-#quality disagreement blake: 104, 533, 542, 1092. note: JN ADD 51 FOR BLAKE
-#Missing blake: 50, 99, 260 + 60
-
-john_redo_import <- blake %>%  
-  filter(id %in% c(810, 6, 17, 999, 67, 50, 460, 574, 219, 8, 147, 786, 61, 99, 1092, 131, 179, 533, 542, 260, 103, 104)) %>%
-  select(id:quality_NA, tf_1:ti_NA) %>%
-  filter(quality_1 %in% c(1,2) & quality_NA %in% c(1,2))
-#JN qual disagreement: 103, 131, 786
-#JN missing: 0
 
 #creating one large dataset 
 master1 <- SLR_import %>%
@@ -167,21 +98,21 @@ master1 <- SLR_import %>%
                          totalid==2 & sumti==2 ~ 1,
                          totalid==2 & sumti==0 ~ 0,
                          TRUE ~ NA_real_)) %>%
-  select(-complete, -sumtf, -sumti, -totalid) %>%
-  select(id, tf_yn, ti_yn, dde, tf_di, ti_di, everything()) %>% 
+  dplyr::select(-complete, -sumtf, -sumti, -totalid) %>%
+  dplyr::select(id, tf_yn, ti_yn, dde, tf_di, ti_di, everything()) %>% 
   #creating a wide dataset
   gather(field, value, tf_di:notes) %>%
   mutate(field_dde = paste(field, dde, sep = "_")) %>%
-  select(-field, -dde) %>%
+  dplyr::select(-field, -dde) %>%
   spread(field_dde, value, convert = TRUE) %>%
   # JK: Note that when you enter the dot below it means to use the current data, so you're merging into the current dataframe
   right_join(., master_key, by=c("id" = "mask")) %>%
   mutate(camera.instance=paste(camera, repeat.instance, sep="_")) %>%
-  select(number, camera.instance, id, tf_yn, ti_yn, everything()) %>%
-  select(-camera, -repeat.instance) %>%
+  dplyr::select(number, camera.instance, id, tf_yn, ti_yn, everything()) %>%
+  dplyr::select(-camera, -repeat.instance) %>%
   gather(field, value, id:ti_NA) %>%
   mutate(camera_field=paste(camera.instance, field, sep="_")) %>%
-  select(-camera.instance, -field) %>%
+  dplyr::select(-camera.instance, -field) %>%
   spread(camera_field, value, convert=TRUE) %>%
   left_join(., PCR_exam, by="number")
 # JK: Now this is one big dataset. The variable names follow the pattern:
@@ -189,6 +120,10 @@ master1 <- SLR_import %>%
 # whether it's a repeat (1 is the first instance; 2 is the second instance; so primary analyses should only be with 1)
 # variable (tf /ti etc)
 # grader (1=Blake, 2=John, NA=Jeremy)
+
+################################
+##          ANALYSES          ##
+################################
 
 #ARVO abstract cross tabulations
 xtabs(data = master1, ~SLR_1_tf_yn + clinic_tf_yn + smartphone_1_tf_yn)
@@ -204,14 +139,13 @@ demoMF <- master1 %>%
             mean.age=mean(age))
 
 ################################
-##          ANALYSES          ##
+##         PREVALENCE         ##
 ################################
-
 # The bootstrapping really only needed to account for inter-village clustering
 # This creates a nested data frame (D), where all data from the same village is put on the same line
 # So if we resample this data frame D, we will choose a random village from D, and then take all kids from that village
 D <- master1 %>% 
-  select(number, age, sex, state_code, age, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn) %>%
+  dplyr::select(number, age, sex, state_code, age, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn) %>%
   filter(!is.na(SLR_1_tf_yn) & !is.na(smartphone_1_tf_yn) & !is.na(clinic_tf_yn) & !is.na(SLR_1_ti_yn) & !is.na(smartphone_1_ti_yn) & !is.na(clinic_ti_yn)) %>% 
   nest(-state_code)
 head(D)
@@ -220,7 +154,7 @@ set.seed(154234)
 # The bs object is the boostrap object; we are creating separate populations with resampling
 # You could alter the "times" option; usually use small number of replications as testing code because faster
 # But then change to a larger number (9999?) for the final analysis
-bs <- bootstraps(D, times = 500)
+bs <- bootstraps(D, times = 9)
 library(coxed) # This is for the bca confidence intervals, but it masks the "summarize" command so that means you have to use dplyr:: beforehand
 library(purrr)
 
@@ -270,10 +204,10 @@ means <- master1 %>%
 bs_mean_table <- data.frame(lowerupper, ci_age, ci_slr.tf, ci_smart.tf, ci_clin.tf, ci_slr.ti, ci_smart.ti, ci_clin.ti, stringsAsFactors=FALSE) %>%
   gather(ci_field, value, ci_age:ci_clin.ti) %>%
   separate(ci_field, into=c("ci", "field"), sep="_") %>%
-  select(-ci) %>%
+  dplyr::select(-ci) %>%
   spread(lowerupper, value, convert=TRUE) %>%
   full_join(., means, by="field") %>%
-  select(field, num, mean, low, up)
+  dplyr::select(field, num, mean, low, up)
 
 # To check
 confint(lm(data=filter(master1,!is.na(SLR_1_tf_yn) & !is.na(smartphone_1_tf_yn) & !is.na(clinic_tf_yn)), age ~ 1))
@@ -293,8 +227,23 @@ overall_means_plot <- bs_mean_table %>%
   geom_bar(position="dodge", stat = "identity") +
   geom_errorbar(aes(ymin=low, ymax=up), width=0.2, position=position_dodge(0.9))
 
+#wilcoxon signed rank test for overall prevalences
+master1_filtered <- master1 %>%
+  dplyr::select(number, age, sex, state_code, age, SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, SLR_1_ti_yn, smartphone_1_ti_yn, clinic_ti_yn) %>%
+  filter(!is.na(SLR_1_tf_yn) & !is.na(smartphone_1_tf_yn) & !is.na(clinic_tf_yn) & !is.na(SLR_1_ti_yn) & !is.na(smartphone_1_ti_yn) & !is.na(clinic_ti_yn))
+
+overallwil_slr_smart_tf <- wilcox.test(master1_filtered$SLR_1_tf_yn, master1_filtered$smartphone_1_tf_yn, alternative = "two.sided", mu=0, paired = T, conf.int = T, conf.level = 0.95) 
+  #significant positive difference
+overallwil_slr_clinic_tf <- wilcox.test(master1_filtered$SLR_1_tf_yn, master1_filtered$clinic_tf_yn, alternative = "two.sided", mu=0, paired = T, conf.int = T, conf.level = 0.95)
+  #no significant difference
+overallwil_smart_clinic_tf <- wilcox.test(master1_filtered$smartphone_1_tf_yn, master1_filtered$clinic_tf_yn, alternative = "two.sided", mu=0, paired = T, conf.int = T, conf.level = 0.95)
+  #significant negative difference
+overallwil_slr_smart_ti <- wilcox.test(master1_filtered$SLR_1_ti_yn, master1_filtered$smartphone_1_ti_yn, alternative = "two.sided", mu=0, paired = T, conf.int = T, conf.level = 0.95)
+overallwil_slr_clinic_ti <- wilcox.test(master1_filtered$SLR_1_ti_yn, master1_filtered$clinic_ti_yn, alternative = "two.sided", mu=0, paired = T, conf.int = T, conf.level = 0.95)
+overallwil_smart_clinic_ti <- wilcox.test(master1_filtered$smartphone_1_ti_yn, master1_filtered$clinic_ti_yn, alternative = "two.sided", mu=0, paired = T, conf.int = T, conf.level = 0.95)
+
 #now for village level prevalences and binom confidence intervals
-#JN comment: I added TI into this table, not sure if you wanted me to do them in separate tables...
+#JN comment: I added TI into this table, not sure if you wanted me to do them separately...
 villagenumsjk <- master1 %>%
   group_by(state_code) %>%
   dplyr::summarize(slr.tf_count=sum(SLR_1_tf_yn==1),
@@ -317,8 +266,8 @@ villagemeansjk <- as.tibble(cbind(villagenumsjk, binconf(villagenumsjk$count, vi
 villagemeansjk %>% group_by(method) %>% dplyr::summarize(sum_total=sum(total)) # Confirming everyone accounted for...
 
 #wilcoxon rank sum to compare prevalence estimates within villages
-  #JN : actually now that I think about it a wilcoxon signed rank test is probably better as the data are paired.
-#attempting to do this for results nested by community in D
+  #JN : actually now that I think about it a wilcoxon signed rank test is probably better as the data are paired (different photos of the same individual)
+#attempting to do this for results nested by community in D, instead of writing it out for evey vilage
 village_wilcox <- D %>%
   mutate(slr_smart_tf=map(data, ~wilcox.test(.$SLR_1_tf_yn, .$smartphone_1_tf_yn, alternative = "two.sided", mu = 0, paired = TRUE, exact = F, 
                                              conf.int = F)),
@@ -344,7 +293,7 @@ village_wilcox$smart_clinic_ti #significant difference in 1, 3, 4, 9=NA, 10=NA, 
   #I cannot think of a better test to compare, a paired t-test would be a stretch since the distribution is not normal
 
 #graphing village level prev estimates with CIs
-village_prev <- villagemeansjk %>%
+village_means_plot <- villagemeansjk %>%
   separate(method, into = c("method", "sign")) %>%
   ggplot(aes(x = state_code, y = PointEst, fill = method)) +
   geom_bar(position="dodge", stat = "identity", alpha=0.6) +
@@ -352,59 +301,161 @@ village_prev <- villagemeansjk %>%
   facet_wrap(~sign, nrow = 1) +
   coord_flip()
 
-#Sensitivity/Specificity, Do separately for 2 index tests (smartphone, SLR), alternatively we could do an LCA per TL
-# JK: here is where we would want to do the cluster bootstrap.
-# I will send you a different R code that has some guidance here, search for "yardstick" 
+################################
+##         SENS/SPEC          ##
+################################
+#I made four tables for two index tests (smartphone, SLR) grading TI and TF, using the yardstick package and bca
+#currently using clinical grades as glod standard but eventally will use an LCA per TL
 library(yardstick)
 options(yardstick.event_first = FALSE)
 library(rsample)
 
+addmargins(xtabs(data = master1_filtered, ~SLR_1_tf_yn + clinic_tf_yn))
+master1_filtered %>% sens(., truth = as.factor(clinic_tf_yn), estimate = as.factor(SLR_1_tf_yn))
+master1_filtered %>% spec(., truth = as.factor(clinic_tf_yn), estimate = as.factor(SLR_1_tf_yn))
 
+#defining all the metrics I want to calculate
+class_metrics <- metric_set(sens, spec, ppv, npv)
 
-#Reference standard: TF by field grade
-#SLR
-Conf(x = master1$SLR_1_tf_yn, ref = master1$clinic_tf_yn)
+#now to get bootstrapped CIs, following same method as for prevalence/means above
+#JN: will use the D object that is nested by village to account for clustering
+set.seed(3323)
+bs2 <- bootstraps(D, times = 9) #object containing the seperate resamples
+
+#SLR TF
+bs_slr_tf_metrics <- map(bs2$splits, ~as.tibble(.) %>% unnest %>%
+  class_metrics(., truth = as.factor(clinic_tf_yn), estimate = as.factor(SLR_1_tf_yn))) %>%
+  bind_rows(.id = 'boots') %>%
+  dplyr::select(-.estimator) %>%
+  spread(.metric, .estimate, convert=T)
+  #now calculating bca confidence intervals, using the same workaround
+ci_sens <- bca(bs_slr_tf_metrics$sens)
+ci_spec <- bca(bs_slr_tf_metrics$spec)
+ci_npv <- bca(bs_slr_tf_metrics$npv)
+ci_ppv <- bca(bs_slr_tf_metrics$ppv)
+#calculating estimates 
+slr_tf_estimates <- class_metrics(master1_filtered, truth = as.factor(clinic_tf_yn), estimate = as.factor(SLR_1_tf_yn)) %>%
+  dplyr::select(-.estimator) %>%
+  mutate(field=.metric) %>%
+  dplyr::select(-.metric)
+  #creating one data table with the metrics for SLR_tf
+slr_tf_metrics <- data.frame(lowerupper, ci_sens, ci_spec, ci_npv, ci_ppv, stringsAsFactors = F) %>%
+  gather(ci_field, value, ci_sens:ci_ppv) %>%
+  separate(ci_field, into=c("ci", "field"), sep="_") %>%
+  dplyr::select(-ci) %>%
+  spread(lowerupper, value, convert = T) %>%
+  full_join(., slr_tf_estimates, by = "field") 
+#checking
+Conf(x = master1$SLR_1_tf_yn, ref = master1$clinic_tf_yn) #also gives NPV/PPV which compare nicely
 BinomCI(260, 260+41) #sens CI   est    lwr.ci    upr.ci
-# 0.8637874 0.8204256 0.8979806
+                           # 0.8637874 0.8204256 0.8979806
 BinomCI(144, 155+43) #spec CI   est    lwr.ci    upr.ci
-# 0.7272727 0.6613545 0.78454
-#Pos Pred Value : 0.8581
-# Neg Pred Value : 0.7908
-#smartphone
+                           #  0.7272727 0.6613545 0.78454
+
+#smartphone TF
+bs_smartphone_tf_metrics <- map(bs2$splits, ~as.tibble(.) %>% unnest %>%
+                           class_metrics(., truth = as.factor(clinic_tf_yn), estimate = as.factor(smartphone_1_tf_yn))) %>%
+  bind_rows(.id = 'boots') %>%
+  dplyr::select(-.estimator) %>%
+  spread(.metric, .estimate, convert=T)
+#JN : note these CIs are named the same as those above. I did this to simplify the separating and merging process to get the final table
+ci_sens <- bca(bs_smartphone_tf_metrics$sens)
+ci_spec <- bca(bs_smartphone_tf_metrics$spec)
+ci_npv <- bca(bs_smartphone_tf_metrics$npv)
+ci_ppv <- bca(bs_smartphone_tf_metrics$ppv)
+#calculating estimates 
+smart_tf_estimates <- class_metrics(master1_filtered, truth = as.factor(clinic_tf_yn), estimate = as.factor(smartphone_1_tf_yn)) %>%
+  dplyr::select(-.estimator) %>%
+  mutate(field=.metric) %>%
+  dplyr::select(-.metric)
+#creating one data table with the metrics for SLR_tf
+smart_tf_metrics <- data.frame(lowerupper, ci_sens, ci_spec, ci_npv, ci_ppv, stringsAsFactors = F) %>%
+  gather(ci_field, value, ci_sens:ci_ppv) %>%
+  separate(ci_field, into=c("ci", "field"), sep="_") %>%
+  dplyr::select(-ci) %>%
+  spread(lowerupper, value, convert = T) %>%
+  full_join(., smart_tf_estimates, by = "field")
+#checking
 Conf(x = master1$smartphone_1_tf_yn, ref = master1$clinic_tf_yn) #more sensitive for TF than SLR
 BinomCI(279, 279+22) #sens CI   est    lwr.ci    upr.ci
-# 0.9269103 0.891821 0.9512402
+                            # 0.9269103 0.891821 0.9512402
 BinomCI(127, 127+71) #spec CI   est    lwr.ci    upr.ci
-# 0.6414141 0.572506 0.7049395
-#Pos Pred Value : 0.7971
-#Neg Pred Value : 0.8523
-#Reference standard: TI by field grade
-#SLR
-Conf(x = master1$SLR_1_ti_yn, ref = master1$clinic_ti_yn)
-BinomCI(417, 417+41) #sens CI   est    lwr.ci    upr.ci
-#  0.9104803 0.8808059 0.9333263
-BinomCI(31, 31+10) #spec CI   est    lwr.ci    upr.ci
-# 0.7560976 0.6065666 0.86175
-#Pos Pred Value : 0.9766
-#Neg Pred Value : 0.4306
-#smartphone
-Conf(x = master1$smartphone_1_ti_yn, ref = master1$clinic_ti_yn) #slightly more sensitive than SLR
-BinomCI(427, 427+31) #sens CI   est    lwr.ci    upr.ci
-#  0.9323144 0.9055278 0.9519093
-BinomCI(29, 29+12) #spec CI   est    lwr.ci    upr.ci
-# 0.7073171 0.5552053 0.8239081
-#Pos Pred Value : 0.9727
-#Neg Pred Value : 0.4833
+                          # 0.6414141 0.572506 0.7049395
 
-#Attempting an LCA
-#install.packages("poLCA")
+#SLR TI
+bs_slr_ti_metrics <- map(bs2$splits, ~as.tibble(.) %>% unnest %>%
+                           class_metrics(., truth = as.factor(clinic_ti_yn), estimate = as.factor(SLR_1_ti_yn))) %>%
+  bind_rows(.id = 'boots') %>%
+  dplyr::select(-.estimator) %>%
+  spread(.metric, .estimate, convert=T)
+#now calculating bca confidence intervals, using the same workaround
+ci_sens <- bca(bs_slr_ti_metrics$sens)
+ci_spec <- bca(bs_slr_ti_metrics$spec)
+ci_npv <- bca(bs_slr_ti_metrics$npv)
+ci_ppv <- bca(bs_slr_ti_metrics$ppv)
+#calculating estimates 
+slr_ti_estimates <- class_metrics(master1_filtered, truth = as.factor(clinic_ti_yn), estimate = as.factor(SLR_1_ti_yn)) %>%
+  dplyr::select(-.estimator) %>%
+  mutate(field=.metric) %>%
+  dplyr::select(-.metric)
+#creating one data table with the metrics for SLR_tf
+slr_ti_metrics <- data.frame(lowerupper, ci_sens, ci_spec, ci_npv, ci_ppv, stringsAsFactors = F) %>%
+  gather(ci_field, value, ci_sens:ci_ppv) %>%
+  separate(ci_field, into=c("ci", "field"), sep="_") %>%
+  dplyr::select(-ci) %>%
+  spread(lowerupper, value, convert = T) %>%
+  full_join(., slr_ti_estimates, by = "field")
+#checking
+Conf(x = master1$SLR_1_ti_yn, ref = master1$clinic_ti_yn) 
+BinomCI(417, 417+41) #sens CI   est    lwr.ci    upr.ci
+                          #  0.9104803 0.8808059 0.9333263
+BinomCI(31, 31+10) #spec CI   est    lwr.ci    upr.ci
+                          # 0.7560976 0.6065666 0.86175
+
+#Smartphone TI
+bs_smartphone_ti_metrics <- map(bs2$splits, ~as.tibble(.) %>% unnest %>%
+                                  class_metrics(., truth = as.factor(clinic_ti_yn), estimate = as.factor(smartphone_1_ti_yn))) %>%
+  bind_rows(.id = 'boots') %>%
+  dplyr::select(-.estimator) %>%
+  spread(.metric, .estimate, convert=T)
+#JN : note these CIs are named the same as those above. I did this to simplify the separating and merging process to get the final table
+ci_sens <- bca(bs_smartphone_ti_metrics$sens)
+ci_spec <- bca(bs_smartphone_ti_metrics$spec)
+ci_npv <- bca(bs_smartphone_ti_metrics$npv)
+ci_ppv <- bca(bs_smartphone_ti_metrics$ppv)
+#calculating estimates 
+smart_ti_estimates <- class_metrics(master1_filtered, truth = as.factor(clinic_ti_yn), estimate = as.factor(smartphone_1_ti_yn)) %>%
+  dplyr::select(-.estimator) %>%
+  mutate(field=.metric) %>%
+  dplyr::select(-.metric)
+#creating one data table with the metrics for SLR_tf
+smart_ti_metrics <- data.frame(lowerupper, ci_sens, ci_spec, ci_npv, ci_ppv, stringsAsFactors = F) %>%
+  gather(ci_field, value, ci_sens:ci_ppv) %>%
+  separate(ci_field, into=c("ci", "field"), sep="_") %>%
+  dplyr::select(-ci) %>%
+  spread(lowerupper, value, convert = T) %>%
+  full_join(., smart_ti_estimates, by = "field")
+#checking
+Conf(x = master1$smartphone_1_ti_yn, ref = master1$clinic_ti_yn)
+BinomCI(427, 427+31) #sens CI   est    lwr.ci    upr.ci
+                          #  0.9323144 0.9055278 0.9519093
+BinomCI(29, 29+12) #spec CI   est    lwr.ci    upr.ci
+                          # 0.7073171 0.5552053 0.8239081
+
+################################
+##             LCA            ##
+################################
+#example of poLCA https://www.r-bloggers.com/example-8-21-latent-class-analysis/
+# another example https://statistics.ohlsen-web.de/latent-class-analysis-polca/
 library(poLCA)
 
 #latent groups: +/- TF (will build separate model later for TI)
 #Response variables: SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn, newindvpcr -- if + all would indicate latent/true trachoma infection
-#covariates: state_code, sex, age. We may want to do a clustered analysis using state_code (mixed effects linear regression?), but not quite sure how to do this
+#JN note: maybe incorporate covariates: state_code, sex, age. We may want to do a clustered analysis using state_code (mixed effects linear regression?), 
+  #but not quite sure how to do this
+
 #new df with relevant variables
-LCAtf <- master1 %>%
+LCAtf_df <- master1_filtered %>%
   dplyr::select(SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn) %>%  #consider adding in later: state_code, age, sex
   #and recoding as positive integers as required for poLCA
   mutate(SLR_tf_yn=case_when(SLR_1_tf_yn == 0 ~ as.integer(1),
@@ -413,15 +464,46 @@ LCAtf <- master1 %>%
                                     smartphone_1_tf_yn == 1 ~ as.integer(2)),
          clinic_tf=case_when(clinic_tf_yn == 0 ~ as.integer(1),
                              clinic_tf_yn == 1 ~ as.integer(2))) %>%
+  #now 1=no and 2-yes
   dplyr::select(-SLR_1_tf_yn, -smartphone_1_tf_yn, -clinic_tf_yn)
-#building a function reflecting this
-f <- cbind(LCAtf$SLR_tf_yn, LCAtf$smartphone_tf_yn, LCAtf$clinic_tf) ~ 1
-#model 1
-M1 <- poLCA(f, LCAtf, nclass = 2) #still not working for me
 
-Cor(x = master1$SLR_1_tf_yn, y=master1$smartphone_1_tf_yn, method = c("pearson"), use = "complete.obs")
+#running the LCA, can change the iterations and reps for the final analysis
+LCA_tf_model1 = poLCA(cbind(SLR_tf_yn, smartphone_tf_yn, clinic_tf) ~ 1, maxiter = 5000, nclass = 2, nrep = 10, data = LCAtf_df)
+#JN : It seems class 1 would be +TF (0.374) and class 2 would be -TF (0.626). 
+#reordering latent classes so 2 = +TF and 1 = -TF
+probs.start <- LCA_tf_model1$probs.start
+new.probs.start <- poLCA.reorder(probs.start, c(2,1)) #here class 1 (+TF) becomes 2 and class 2 (-TF) becomes 1
+LCA_tf_model_reordered = poLCA(cbind(SLR_tf_yn, smartphone_tf_yn, clinic_tf) ~ 1, probs.start = new.probs.start, 
+                               maxiter = 5000, nclass = 2, nrep = 10, data = LCAtf_df)
+#Not sure how I would get the sens/spec/npv/ppv from the results...
+#inspecting the latent class memberships:
+table(LCA_tf_model1$predclass) #could calc the sens/spec etc from this but bootstrapping would be an issue
+#JN: I would like to have a column of predicted class memberships I can bind to the df used in the LCA model
+LCA_tf_model_reordered$predcell #this give predicted and observed for each combination of response variables
+LCA_tf_model_reordered$posterior #class membership probabilities for each individual
+LCA_tf_model_reordered$predclass  #here it is!!
 
+skim(LCA_tf_model_reordered$predclass) #499, everyone accounted for
 
+tf_with_latentclass <- LCAtf_df %>%
+  cbind(LCA_tf_model_reordered$predclass) %>%
+  rename(predclass = 'LCA_tf_model_reordered$predclass') %>%
+  #reformating to binary
+  mutate(SLR_tf_yn=SLR_tf_yn-1,
+         smartphone_tf_yn=smartphone_tf_yn-1,
+         clinic_tf=clinic_tf-1,
+         predclass=predclass-1) #with this I should be able to calculate sens/spec with bca using the yardstick backage
+
+#JN : I remember Tom saying something about including each of the villages as separate inputs. Does this mean I should create a separate model 
+  #with the SLR/smart/clinic grades for each village as separate response variables? 
+  #This would probably help our degrees of freedom
+  #I would have to merge a lot of tables to get predicted class for each individuals 
+  #but maybe I could use the posterior class membership probabilities from the model to determine the class membership for the new data
+  #https://datascience.stackexchange.com/questions/40632/how-do-i-use-the-model-generated-by-the-r-package-polca-to-classify-new-data-as
+
+################################
+##           KAPPAS           ##
+################################
 # JK: So the kappas can be done with the same dataset, which is nice for internal consistency:
 # Using 4-level, but without weighting (in reality we'd probably want to weight 1 and 2 as being more similar, and 3 and 4 more similar)
 agreement_matrix <- tibble(
@@ -429,8 +511,7 @@ agreement_matrix <- tibble(
   "2" = c(0.9, 1, 0.5, 0.2),
   "3" = c(0.2, 0.5, 1, 0.9),
   "4" = c(0.1, 0.2, 0.9, 1))
-#JN comment--there are 9 field graders, do we want to compute kappas/ICC compared to each individual field grader?
-# JK -- I wouldn't get so complicated. Just assume the field graders are exchangable
+#Repeats
 # Blake
 xtabs(data=master1, ~ SLR_1_tf_1+SLR_2_tf_1, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_1, master1$SLR_2_tf_1, conf.level=0.95)
@@ -452,8 +533,6 @@ CohenKappa(master1$SLR_1_tf_NA, master1$SLR_2_tf_NA, conf.level=0.95)
 xtabs(data=master1, ~ SLR_1_tf_di_NA +SLR_2_tf_di_NA , addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_NA , master1$SLR_2_tf_di_NA , conf.level=0.95)
 #TRYING TO REPRODUCE WHAT YOU DID BELOW:
-#JN comment--do we want to do TI?
-# JK: Yes on TI
 #among slr photos john vs blake
 xtabs(data=master1, ~ SLR_1_tf_di_1+SLR_1_tf_di_2, addNA=TRUE) 
 CohenKappa(master1$SLR_1_tf_di_1, master1$SLR_1_tf_di_2, conf.level=0.95)
