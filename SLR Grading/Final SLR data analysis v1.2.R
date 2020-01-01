@@ -7,10 +7,10 @@
   #Wilcoxon sign rank test to compare paired prevalence estimates for each village ?and overall? - JN Done
   #stratify by age and compare SLR vs smartphone for TI and TF prevalence (SLR probs better for 0-2yo) - 
   #comparing SLR/field vs smartphone/field kappas--wrtie function in R that calculates difference in ks then bootstrap the difference. 
-    #is it 0 or not? - 
-  #figure out an LCA as gold standard - JN Done
+    #is it 0 or not? - JN attempted
+  #figure out an LCA as gold standard - JN attempted
+  #use LCA gold standard to calculate sens and spec - JN Done
   #bootstrap CIs around sens/spec calculations using "yardstick" package - JN Done with bcas
-  #use LCA gold standard to calculate sens and spec - 
 
 library(tidyverse)
 library(skimr)
@@ -466,7 +466,6 @@ LCAtf_df <- master1_filtered %>%
                              clinic_tf_yn == 1 ~ as.integer(2))) %>%
   #now 1=no and 2-yes
   dplyr::select(-SLR_1_tf_yn, -smartphone_1_tf_yn, -clinic_tf_yn)
-
 #running the LCA, can change the iterations and reps for the final analysis
 LCA_tf_model1 = poLCA(cbind(SLR_tf_yn, smartphone_tf_yn, clinic_tf) ~ 1, maxiter = 5000, nclass = 2, nrep = 10, data = LCAtf_df)
 #JN : It seems class 1 would be +TF (0.374) and class 2 would be -TF (0.626). 
@@ -482,7 +481,6 @@ table(LCA_tf_model1$predclass) #could calc the sens/spec etc from this but boots
 LCA_tf_model_reordered$predcell #this give predicted and observed for each combination of response variables
 LCA_tf_model_reordered$posterior #class membership probabilities for each individual
 LCA_tf_model_reordered$predclass  #here it is!!
-
 skim(LCA_tf_model_reordered$predclass) #499, everyone accounted for
 
 tf_with_latentclass <- LCAtf_df %>%
@@ -493,7 +491,10 @@ tf_with_latentclass <- LCAtf_df %>%
          smartphone_tf_yn=smartphone_tf_yn-1,
          clinic_tf=clinic_tf-1,
          predclass=predclass-1) #with this I should be able to calculate sens/spec with bca using the yardstick backage
-
+#just trying it out now. will do for all and calculate bcas once we have final latent class
+class_metrics(tf_with_latentclass, truth = as.factor(predclass), estimate = as.factor(SLR_tf_yn))
+class_metrics(tf_with_latentclass, truth = as.factor(predclass), estimate = as.factor(smartphone_tf_yn))
+class_metrics(tf_with_latentclass, truth = as.factor(predclass), estimate = as.factor(clinic_tf))
 #JN : I remember Tom saying something about including each of the villages as separate inputs. Does this mean I should create a separate model 
   #with the SLR/smart/clinic grades for each village as separate response variables? 
   #This would probably help our degrees of freedom
@@ -560,7 +561,7 @@ CohenKappa(master1$smartphone_1_tf_yn, master1$clinic_tf_yn, conf.level=0.95)
 # Consensus SLR vs Consensus smartphone
 xtabs(data=master1, ~ smartphone_1_tf_yn+SLR_1_tf_yn, addNA=TRUE) 
 CohenKappa(master1$smartphone_1_tf_yn, master1$SLR_1_tf_yn, conf.level=0.95)
-#JN comment--doing for TI
+#for TI
 #among slr photos john vs blake
 xtabs(data=master1, ~ SLR_1_ti_di_1+SLR_1_ti_di_2, addNA=TRUE) 
 CohenKappa(master1$SLR_1_ti_di_1, master1$SLR_1_ti_di_2, conf.level=0.95)
@@ -574,9 +575,62 @@ CohenKappa(master1$SLR_1_ti_yn, master1$clinic_ti_yn, conf.level=0.95)
 xtabs(data=master1, ~ smartphone_1_ti_yn+clinic_ti_yn, addNA=TRUE) 
 CohenKappa(master1$smartphone_1_ti_yn, master1$clinic_ti_yn, conf.level=0.95)
 
-#Note to write function to determine difference between kappas****
+################################
+##      KAPPA DIFFERENCE     ##
+################################
+#Note to write function to determine difference between kappas
+#write function in R that calculates difference in ks then bootstrap the difference. check if it is 0
+#JN : My thought here is to calculate kappas for bootstrapped samples then calculate the difference between the two (e.g., clinic and slr)
+  #and determine the 95%CI from this distribution of differences. 
 
-#JN: Doing an ICC. 
+set.seed(2020) 
+#JN note: can use D (nested by community) if we need to account for nesting in the kappa analysis
+bs3 <- bootstraps(master1_filtered, times = 999) #object containing the seperate resamples
+
+#Difference function
+dummy_df <- as.tibble(list(x=5:8, y=1:4))
+dummy_dif <- function(x,y) {
+  x - y }
+dummy_dif(5,3) #works
+dummy_dif(dummy_df$x, dummy_df$y) #also works
+
+#two functions that take intput from split and return kappas for smart-clinic and slr-clinic
+  #starting for slr-clinic and smart-clinic tf, reiterate for other combinations if it works.
+bootstrapkappa_smart <- function(splits) {
+  x <- analysis(splits)
+  CohenKappa(x$smartphone_1_tf_yn, x$clinic_tf_yn, conf.level=NA)
+}
+bootstrapkappa_slr <- function(splits) {
+  x <- analysis(splits)
+  CohenKappa(x$SLR_1_tf_yn, x$clinic_tf_yn, conf.level=NA)
+}
+#creating bootstrapped kappas from bs3 in order to calculate differences
+bootstrap_kappa <- bs3 %>% 
+  mutate(
+    kappa_slr = map(splits, bootstrapkappa_slr), 
+    kappa_smart = map(splits, bootstrapkappa_smart))
+bootstrap_kappa
+#now applying the dummy_dif function
+bootstrap_kappa1 <- mapply(dummy_dif, bootstrap_kappa$kappa_smart, bootstrap_kappa$kappa_slr)
+
+#alternatively I can build a function that calculates the difference in ks then bootstrap the difference
+bootstrapkappa_dif <- function(splits) {
+  x <- analysis(splits)
+  CohenKappa(x$smartphone_1_tf_yn, x$clinic_tf_yn, conf.level=NA) - CohenKappa(x$SLR_1_tf_yn, x$clinic_tf_yn, conf.level=NA)
+}
+#now to bootstrap it
+bootstrap_kappa2 <- bs3 %>%
+  mutate(kappa_dif = map(splits, bootstrapkappa_dif))
+bootstrap_kappa2$kappa_dif #the same as the results of mapply(dummy_dif). This way seems simpler and faster to me.
+
+#I think the next step would be to take the 95% CI of this distribution and see if it contains 0 to determine if there is a difference
+ci_kappa_dif1 <- bca(bootstrap_kappa1, conf.level = 0.95)
+ci_kappa_dif2 <- bca(unlist(bootstrap_kappa2$kappa_dif), conf.level = 0.95)
+#same results and both contain 0
+
+################################
+##             ICC            ##
+################################
 # JK: This looks fine. I like the Stata help file for icc to help me understand the options, 
 # just google Stata help icc and then open up the pdf and read the "Introduction" section (note, not the html; there is more info in the pdf)
 # Not sure what we do here. Most people will want to see kappas. Tom is probably the only person who would want to see an ICC. 
@@ -595,65 +649,65 @@ CohenKappa(master1$smartphone_1_ti_yn, master1$clinic_ti_yn, conf.level=0.95)
   #blake repeats
   #blake slr rep
 master1 %>%
-  select(SLR_1_tf_1, SLR_2_tf_1) %>%
+  dplyr::select(SLR_1_tf_1, SLR_2_tf_1) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   #blake smart rep
 master1 %>%
-  select(smartphone_1_tf_1, smartphone_2_tf_1) %>%
+  dplyr::select(smartphone_1_tf_1, smartphone_2_tf_1) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   #john repeats
   #johnslrrep
 master1 %>%
-  select(SLR_1_tf_2, SLR_2_tf_2) %>%
+  dplyr::select(SLR_1_tf_2, SLR_2_tf_2) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   #johnsmartrep 
 master1 %>%
-  select(smartphone_1_tf_2, smartphone_2_tf_2) %>%
+  dplyr::select(smartphone_1_tf_2, smartphone_2_tf_2) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   #JK repeats
   #JK SLR reps
 master1 %>%
-  select(SLR_1_tf_NA, SLR_2_tf_NA) %>%
+  dplyr::select(SLR_1_tf_NA, SLR_2_tf_NA) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   #JK smart rep
 master1 %>%
-  select(smartphone_1_tf_NA, smartphone_2_tf_NA) %>%
+  dplyr::select(smartphone_1_tf_NA, smartphone_2_tf_NA) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   #among slr photos john vs blake
 master1 %>%
-  select(SLR_1_tf_di_1, SLR_1_tf_di_2) %>%
+  dplyr::select(SLR_1_tf_di_1, SLR_1_tf_di_2) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # among smart photos john vs blake
 master1 %>%
-  select(smartphone_1_tf_di_1, smartphone_1_tf_di_2) %>%
+  dplyr::select(smartphone_1_tf_di_1, smartphone_1_tf_di_2) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # Blake SLR vs field
 master1 %>%
-  select(SLR_1_tf_di_1, clinic_tf_yn) %>%
+  dplyr::select(SLR_1_tf_di_1, clinic_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # John SLR vs field
 master1 %>%
-  select(SLR_1_tf_di_2, clinic_tf_yn) %>%
+  dplyr::select(SLR_1_tf_di_2, clinic_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # Blake smart vs field
 master1 %>%
-  select(smartphone_1_tf_di_1, clinic_tf_yn) %>%
+  dplyr::select(smartphone_1_tf_di_1, clinic_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # John smart vs field
 master1 %>%
-  select(smartphone_1_tf_di_2, clinic_tf_yn) %>%
+  dplyr::select(smartphone_1_tf_di_2, clinic_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # Consensus SLR vs field
 master1 %>%
-  select(SLR_1_tf_yn, clinic_tf_yn) %>%
+  dplyr::select(SLR_1_tf_yn, clinic_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # Consensus smart vs field
 master1 %>%
-  select(smartphone_1_tf_yn, clinic_tf_yn) %>%
+  dplyr::select(smartphone_1_tf_yn, clinic_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
   # Consensus SLR vs Consensus smartphone
 master1 %>%
-  select(SLR_1_tf_yn, smartphone_1_tf_yn) %>%
+  dplyr::select(SLR_1_tf_yn, smartphone_1_tf_yn) %>%
   icc(model = "twoway", type = "agreement", conf.level = 0.95)
 #Did we want to calculate Kappas and ICCs compared to each field grader (there are 9 of them)? 
 # JK: I don't think I would bother
