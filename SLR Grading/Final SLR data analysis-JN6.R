@@ -529,7 +529,6 @@ library(poLCA)
 library(randomLCA) # This one allows random effect for subject, good for diagnostic tests with multiple graders
 # Note we could have used that here actually but we did a consensus grade so not necessary
 # The following is an example for learning...
-# # https://urldefense.proofpoint.com/v2/url?u=https-3A__cran.r-2Dproject.org_web_packages_randomLCA_vignettes_randomLCA-2Dpackage.pdf&d=DwIGaQ&c=UXmaowRpu5bLSLEQRunJ2z-YIUZuUoa9Rw_x449Hd_Y&r=tVKxe7eO-wNevBOmLeom8T6-k4THVn678LRG_gJ8-HI&m=L3EqDwMx97lzTPDE-Cg5JKOBNiw_Wcpg4iXyX5k0QvQ&s=_BwlxwHZvfM5TuT3LofowfgaTTYX3vYO05cdn03aQyA&e= 
 # # FIRST, an example without random effects (myocardial)
 # # Note below that myocardial dataframe has 4 dichotomous variables,
 # # and the fifth variable is freq=the frequency of each from a rxc contingency table
@@ -604,7 +603,7 @@ plot(tf.lca2, type = "b", pch = 1:2, xlab = "Test",
                 text = list(c("Class 1", "Class 2")),
                 col = trellis.par.get()$superpose.symbol$col[1:2],
                 points = list(pch = 1:2)))
-tfprobs <- outcomeProbs(tf.lca2, boot = TRUE)
+tfprobs <- outcomeProbs(tf.lca2, boot = TRUE, R = 9999)
 tfprobs
 # For sensitivity if class 2 is positive disease
 tfprobs[[2]]
@@ -631,8 +630,8 @@ D <- master1 %>%
   nest(-examiner)
 set.seed(12346)
 # The bs object is the boostrap object; we are creating separate populations with resampling
-bs_nested <- bootstraps(D, times = 99)
-bs_unnested <- bootstraps(master1, times = 99)
+bs_nested <- bootstraps(D, times = 9999)
+bs_unnested <- bootstraps(master1, times = 9999)
 
 # BOOTSTRAP CIs FOR SENS/SPEC DIFFERENCES BASED ON LCA 
 # First make a formula
@@ -686,35 +685,126 @@ bca(bs_lca$spec.slr.minus.clin)
 bca(bs_lca$spec.slr.minus.smart)
 bca(bs_lca$spec.clin.minus.smart)
 
-#JN: Here is what I did to calculate pdlr and ndlr and their BCas using the poLCA and yardstick packages
-library(yardstick)
-options(yardstick.event_first = FALSE)
-class_metrics <- metric_set(sens, spec, ppv, npv)
+#JN: Here is what I did to calculate pdlr and ndlr and their BCas using the poLCA and DTComPair packages
+library(DTComPair)
+#JN this package also allows for comparison between sens/spec/plr/nlr
 
-LCAtf_df <- master1 %>%
+lca_tf_df <- master1 %>%
   dplyr::select(SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn) %>%
   mutate(SLR_1_tf_yn=SLR_1_tf_yn+1,
          smartphone_1_tf_yn=smartphone_1_tf_yn+1,
          clinic_tf_yn=clinic_tf_yn+1)
-LCA_tf_model1 = poLCA(cbind(SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn) ~ 1, nclass = 2, data = LCAtf_df)
-probs.start <- LCA_tf_model1$probs.start
-new.probs.start <- poLCA.reorder(LCA_tf_model1$probs.start,order(LCA_tf_model1$P,decreasing=TRUE)) #here class 1 (+TF) becomes 2 and class 2 (-TF) becomes 1
-LCA_tf_model1 = poLCA(cbind(SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn) ~ 1, nclass = 2, data = LCAtf_df, probs.start = new.probs.start)
+lca_tf_model1 = poLCA(cbind(SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn) ~ 1, nclass = 2, data = lca_tf_df)
+probs.start <- lca_tf_model1$probs.start
+new.probs.start <- poLCA.reorder(lca_tf_model1$probs.start,order(lca_tf_model1$P,decreasing=TRUE)) #here class 1 (+TF) becomes 2 and class 2 (-TF) becomes 1
+lca_tf_model1 = poLCA(cbind(SLR_1_tf_yn, smartphone_1_tf_yn, clinic_tf_yn) ~ 1, nclass = 2, data = lca_tf_df, probs.start = new.probs.start)
 #this gives the predicted class
-LCA_tf_model1$predclass
+lca_tf_model1$predclass
 
-tf_with_lc <- LCAtf_df %>%
-  cbind(LCA_tf_model1$predclass) %>%
-  rename(predclass = 'LCA_tf_model1$predclass') %>%
+tf_with_lc <- lca_tf_df %>%
+  cbind(lca_tf_model1$predclass) %>%
+  rename(predclass = 'lca_tf_model1$predclass') %>%
   #reformating to binary
   mutate(SLR_1_tf_yn=SLR_1_tf_yn-1,
          smartphone_1_tf_yn=smartphone_1_tf_yn-1,
          clinic_tf_yn=clinic_tf_yn-1,
-         predclass=predclass-1) #with this I should be able to calculate sens/spec with bca using the yardstick backage
-#just trying it out now. will do for all and calculate bcas once we have final latent class
-class_metrics(tf_with_lc, truth = as.factor(predclass), estimate = as.factor(SLR_1_tf_yn))
-class_metrics(tf_with_lc, truth = as.factor(predclass), estimate = as.factor(smartphone_1_tf_yn))
-class_metrics(tf_with_lc , truth = as.factor(predclass), estimate = as.factor(clinic_tf_yn))
+         predclass=predclass-1)
+
+#Calculating PLR/NLR
+#PLR sens/1-spec
+#NLR 1-sens/spec
+# SLR TF vs LC
+slr_tf_tab <- tab.1test(predclass, SLR_1_tf_yn, data=tf_with_lc)     
+acc.1test(slr_tf_tab, alpha = 0.05)
+#smart TF vs LC
+smart_tf_tab <- tab.1test(predclass, smartphone_1_tf_yn, data=tf_with_lc)
+acc.1test(smart_tf_tab, alpha = 0.05)
+#clinic TF vs LC
+clinic_tf_tab <- tab.1test(predclass, clinic_tf_yn, data=tf_with_lc)
+acc.1test(clinic_tf_tab, alpha = 0.05)
+#function to get PDLR and NDLR estimates
+
+tf.lr <- function(d) {
+tf.data <- d %>%
+  dplyr::select(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn)
+d2 <- d %>% 
+  dplyr::select(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) %>%
+  dplyr::mutate(clinic_tf_yn=(clinic_tf_yn + 1),
+                SLR_1_tf_yn=(SLR_1_tf_yn + 1),
+                smartphone_1_tf_yn=(smartphone_1_tf_yn + 1))
+tf.polca.model <- poLCA(cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) ~ 1, nclass = 2, data = d2, verbose = F)
+new.probs.start <- poLCA.reorder(tf.polca.model$probs.start, order(tf.polca.model$P, decreasing = T))
+tf.polca.model <- poLCA(cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) ~ 1, nclass = 2, data = d2, verbose = F, probs.start=new.probs.start)
+tf.lc <- d2 %>%
+  cbind(tf.polca.model$predclass) %>%
+  rename(predclass = 'tf.polca.model$predclass') %>%
+  #reformating to binary
+  mutate(clinic_tf_yn=clinic_tf_yn-1,
+         SLR_1_tf_yn=SLR_1_tf_yn-1,
+         smartphone_1_tf_yn=smartphone_1_tf_yn-1,
+         predclass=predclass-1)
+#calculating estimates for each
+slr_tf_tab <- tab.1test(predclass, SLR_1_tf_yn, data=tf.lc)     
+slr <- acc.1test(slr_tf_tab, alpha = 0.05)
+smart_tf_tab <- tab.1test(predclass, smartphone_1_tf_yn, data=tf.lc)
+smart <- acc.1test(smart_tf_tab, alpha = 0.05)
+clinic_tf_tab <- tab.1test(predclass, clinic_tf_yn, data=tf.lc)
+clinic <- acc.1test(clinic_tf_tab, alpha = 0.05)
+#subsetting the PDLR estimates
+slr.pdlr <- slr$pdlr[[1]]
+smart.pdlr <- smart$pdlr[[1]]
+clinic.pdlr <- clinic$pdlr[[1]]
+#subsetting the NDLR estimates
+slr.ndlr <- slr$ndlr[[1]]
+smart.ndlr <- smart$ndlr[[1]]
+clinic.ndlr <- clinic$ndlr[[1]]
+#merging the estimates into one data table
+pdlr.ndlr.estimates <- as_tibble(cbind(slr.pdlr, smart.pdlr, clinic.pdlr, slr.ndlr, smart.ndlr, clinic.ndlr)) %>%
+  mutate(pdlr.slr.minus.clinic=slr.pdlr-clinic.pdlr,
+         pdlr.slr.minus.smart=slr.pdlr-smart.pdlr,
+         pdlr.clinic.minus.smart=clinic.pdlr-smart.pdlr,
+         ndlr.slr.minus.clinic=slr.ndlr-clinic.ndlr,
+         ndlr.slr.minus.smart=slr.ndlr-smart.ndlr,
+         ndlr.clinic.minus.smart=clinic.ndlr-smart.ndlr)
+pdlr.ndlr.estimates 
+}
+view(master1 %>%tf.lr(.))
+#bootstrapping
+bs_lca_lr <- map(bs_nested$splits, ~as_tibble(.) %>% 
+                        unnest %>%  
+                        tf.lr(.)) %>%
+  bind_rows(.id = 'boots') 
+#BCas
+bca(bs_lca_lr$slr.pdlr) # output is NaN NaN
+bca(is.finite(bs_lca_lr$slr.pdlr)) #now 0 to 0...
+#for now will use the CIs given by acc.1test
+bca(bs_lca_lr$smart.pdlr)
+bca(bs_lca_lr$clinic.pdlr)
+bca(bs_lca_lr$slr.ndlr)
+bca(bs_lca_lr$smart.ndlr)
+bca(bs_lca_lr$clinic.ndlr)
+#differeces
+bca(bs_lca_lr$pdlr.slr.minus.clinic)
+bs_plr_slr_min_clinic <- bs_lca_lr %>%
+  dplyr::select(pdlr.slr.minus.clinic) %>%
+  filter(is.finite(pdlr.slr.minus.clinic)) #gets rid of 242 vallues
+bca(bs_plr_slr_min_clinic$pdlr.slr.minus.clinic) 
+#alternative to filtering these out is write a function that redraws a boot until all 9999 are finite
+bca(bs_lca_lr$pdlr.slr.minus.smart) #lots of NaN and Inf numbers
+bs_plr_slr_min_smart <- bs_lca_lr %>%
+  dplyr::select(pdlr.slr.minus.smart) %>%
+  filter(is.finite(pdlr.slr.minus.smart)) #gets rid of 640 values
+bca(bs_plr_slr_min_smart$pdlr.slr.minus.smart)
+
+bca(bs_lca_lr$pdlr.clinic.minus.smart)
+bs_plr_clin_min_smart <- bs_lca_lr %>%
+  dplyr::select(pdlr.clinic.minus.smart) %>%
+  filter(is.finite(pdlr.clinic.minus.smart)) #removes 630
+bca(bs_plr_clin_min_smart$pdlr.clinic.minus.smart)
+
+bca(bs_lca_lr$ndlr.slr.minus.clinic)
+bca(bs_lca_lr$ndlr.slr.minus.smart)
+bca(bs_lca_lr$ndlr.clinic.minus.smart)
 
 #doing for TI
 LCAti_df <- master1 %>%
@@ -737,187 +827,98 @@ ti_with_lc <- LCAti_df %>%
          smartphone_1_ti_yn=smartphone_1_ti_yn-1,
          clinic_ti_yn=clinic_ti_yn-1,
          predclass=predclass-1) #with this I should be able to calculate sens/spec with bca using the yardstick backage
-#just trying it out now. will do for all and calculate bcas once we have final latent class
-class_metrics(ti_with_lc, truth = as.factor(predclass), estimate = as.factor(SLR_1_ti_yn)) #for some reason the SLR sens and npv == 1
-class_metrics(ti_with_lc, truth = as.factor(predclass), estimate = as.factor(smartphone_1_ti_yn))
-class_metrics(ti_with_lc , truth = as.factor(predclass), estimate = as.factor(clinic_ti_yn))
+#SLR TI vs LC
+slr_ti_tab <- tab.1test(predclass, SLR_1_ti_yn, data=ti_with_lc)     
+acc.1test(slr_ti_tab, alpha = 0.05) #sens and NPV = 1 and NDLR =0...
+#smart TI vs LC
+smart_ti_tab <- tab.1test(predclass, smartphone_1_ti_yn, data=ti_with_lc)
+acc.1test(smart_ti_tab, alpha = 0.05)
+#clinic TI vs LC
+clinic_ti_tab <- tab.1test(predclass, clinic_ti_yn, data=ti_with_lc)
+acc.1test(clinic_ti_tab, alpha = 0.05)
 
-##################################
-##      TABLE 1 TF METRICS      ##
-##################################
-lca.fx.metrics <- function(d) {
-  tf.data <- d %>%
-    dplyr::select(clinic_tf_yn,SLR_1_tf_yn,smartphone_1_tf_yn)
-  tf.form <- cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn)~1
+#creating a function for point estimates and differences between plr and nlr
+ti.lr <- function(d) {
+  ti.data <- d %>%
+    dplyr::select(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn)
   d2 <- d %>% 
-    dplyr::select(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) %>%
-    dplyr::mutate(clinic_tf_yn=(clinic_tf_yn + 1),
-                  SLR_1_tf_yn=(SLR_1_tf_yn + 1),
-                  smartphone_1_tf_yn=(smartphone_1_tf_yn + 1))
-  tf.polca.model <- poLCA(cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) ~ 1, nclass = 2, data = d2, verbose = F)
-  #reordering so class 1 is -TF and class 2 is +TF
-  new.probs.start <- poLCA.reorder(tf.polca.model$probs.start, order(tf.polca.model$P, decreasing = T))
-  tf.polca.model <- poLCA(cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) ~ 1, nclass = 2, data = d2, verbose = F, probs.start=new.probs.start)
-  tf.lc <- d2 %>%
-    cbind(tf.polca.model$predclass) %>%
-    rename(predclass = 'tf.polca.model$predclass') %>%
+    dplyr::select(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) %>%
+    dplyr::mutate(clinic_ti_yn=(clinic_ti_yn + 1),
+                  SLR_1_ti_yn=(SLR_1_ti_yn + 1),
+                  smartphone_1_ti_yn=(smartphone_1_ti_yn + 1))
+  ti.polca.model <- poLCA(cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) ~ 1, nclass = 2, data = d2, verbose = F)
+  new.probs.start <- poLCA.reorder(ti.polca.model$probs.start, order(ti.polca.model$P, decreasing = T))
+  ti.polca.model <- poLCA(cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) ~ 1, nclass = 2, data = d2, verbose = F, probs.start=new.probs.start)
+  ti.lc <- d2 %>%
+    cbind(ti.polca.model$predclass) %>%
+    rename(predclass = 'ti.polca.model$predclass') %>%
     #reformating to binary
-    mutate(clinic_tf_yn=clinic_tf_yn-1,
-           SLR_1_tf_yn=SLR_1_tf_yn-1,
-           smartphone_1_tf_yn=smartphone_1_tf_yn-1,
+    mutate(clinic_ti_yn=clinic_ti_yn-1,
+           SLR_1_ti_yn=SLR_1_ti_yn-1,
+           smartphone_1_ti_yn=smartphone_1_ti_yn-1,
            predclass=predclass-1)
-  class_metrics <- metric_set(sens, spec, ppv, npv)
-  slr.tf.metrics <- class_metrics(tf.lc, truth = as.factor(predclass), estimate = as.factor(SLR_1_tf_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(slr.tf.npv=npv,
-           slr.tf.ppv=ppv,
-           slr.tf.sens=sens,
-           slr.tf.spec=spec)
-  smart.tf.metrics <- class_metrics(tf.lc, truth = as.factor(predclass), estimate = as.factor(smartphone_1_tf_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(smart.tf.npv=npv,
-           smart.tf.ppv=ppv,
-           smart.tf.sens=sens,
-           smart.tf.spec=spec)
-  clinic.tf.metrics <- class_metrics(tf.lc, truth = as.factor(predclass), estimate = as.factor(clinic_tf_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(clinic.tf.npv=npv,
-           clinic.tf.ppv=ppv,
-           clinic.tf.sens=sens,
-           clinic.tf.spec=spec)
-  metrics.table <- cbind(slr.tf.metrics, smart.tf.metrics, clinic.tf.metrics)
-  metrics.table
+  #calculating estimates for each
+  slr_ti_tab <- tab.1test(predclass, SLR_1_ti_yn, data=ti.lc)     
+  slr <- acc.1test(slr_ti_tab, alpha = 0.05)
+  smart_ti_tab <- tab.1test(predclass, smartphone_1_ti_yn, data=ti.lc)
+  smart <- acc.1test(smart_ti_tab, alpha = 0.05)
+  clinic_ti_tab <- tab.1test(predclass, clinic_ti_yn, data=ti.lc)
+  clinic <- acc.1test(clinic_ti_tab, alpha = 0.05)
+  #subsetting the PDLR estimates
+  slr.pdlr <- slr$pdlr[[1]]
+  smart.pdlr <- smart$pdlr[[1]]
+  clinic.pdlr <- clinic$pdlr[[1]]
+  #subsetting the NDLR estimates
+  slr.ndlr <- slr$ndlr[[1]]
+  smart.ndlr <- smart$ndlr[[1]]
+  clinic.ndlr <- clinic$ndlr[[1]]
+  #merging the estimates into one data table
+  pdlr.ndlr.estimates <- as_tibble(cbind(slr.pdlr, smart.pdlr, clinic.pdlr, slr.ndlr, smart.ndlr, clinic.ndlr)) %>%
+    mutate(pdlr.slr.minus.clinic=slr.pdlr-clinic.pdlr,
+           pdlr.slr.minus.smart=slr.pdlr-smart.pdlr,
+           pdlr.clinic.minus.smart=clinic.pdlr-smart.pdlr,
+           ndlr.slr.minus.clinic=slr.ndlr-clinic.ndlr,
+           ndlr.slr.minus.smart=slr.ndlr-smart.ndlr,
+           ndlr.clinic.minus.smart=clinic.ndlr-smart.ndlr)
+  pdlr.ndlr.estimates 
 }
-lca.fx.metrics(master1) #works
-master1 %>% lca.fx.metrics(.) #also works
-#now bootstrapping to get confidence intervals
-bs_lca_metrics <- map(bs_nested$splits, ~as_tibble(.) %>% 
-                unnest %>%  
-                  lca.fx.metrics(.)) %>%
-  # Then bind together the results (the single row from the summarize above)
+view(master1 %>%ti.lr(.))
+#bootstrapping
+bs_lca_lr_ti <- map(bs_nested$splits, ~as_tibble(.) %>% 
+                   unnest %>%  
+                   ti.lr(.)) %>%
   bind_rows(.id = 'boots') 
-#point estimates
-master1 %>% lca.fx.metrics(.)
-#getting estimates an 95% BCas
-#SLR
-bca(bs_lca_metrics$slr.tf.sens)
-bca(bs_lca_metrics$slr.tf.spec)
-bca(bs_lca_metrics$slr.tf.ppv)
-bca(bs_lca_metrics$slr.tf.npv)
-#smart
-bca(bs_lca_metrics$smart.tf.sens)
-bca(bs_lca_metrics$smart.tf.spec)
-bca(bs_lca_metrics$smart.tf.ppv)
-bca(bs_lca_metrics$smart.tf.npv)
-#clinic
-bca(bs_lca_metrics$clinic.tf.sens)
-bca(bs_lca_metrics$clinic.tf.spec)
-bca(bs_lca_metrics$clinic.tf.ppv)
-bca(bs_lca_metrics$clinic.tf.npv)
-#wilcoxon
-#slr.smart sens, spec, ppv, npv
-wilcox.test(bs_lca_metrics$slr.tf.sens, bs_lca_metrics$smart.tf.sens, paired=TRUE) #sig dif
-wilcox.test(bs_lca_metrics$slr.tf.spec, bs_lca_metrics$smart.tf.spec, paired=TRUE) 
-wilcox.test(bs_lca_metrics$slr.tf.ppv, bs_lca_metrics$smart.tf.ppv, paired=TRUE) 
-wilcox.test(bs_lca_metrics$slr.tf.npv, bs_lca_metrics$smart.tf.npv, paired=TRUE) #all have super low p-values, unsure if this is a reliable test.
+#BCas
+bca(bs_lca_lr_ti$slr.pdlr)
+bca(bs_lca_lr_ti$smart.pdlr)
+bca(bs_lca_lr_ti$clinic.pdlr)
+bca(bs_lca_lr_ti$slr.ndlr)
+bca(bs_lca_lr_ti$smart.ndlr)
+bca(bs_lca_lr_ti$clinic.ndlr)
 
-#JN making a function to calculate the differences between TF metrics (will report in results but not in table)
-lca.fx.metrics.dif <- function(d) {
-  tf.data <- d %>%
-    dplyr::select(clinic_tf_yn,SLR_1_tf_yn,smartphone_1_tf_yn)
-  tf.form <- cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn)~1
-  d2 <- d %>% 
-    dplyr::select(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) %>%
-    dplyr::mutate(clinic_tf_yn=(clinic_tf_yn + 1),
-                  SLR_1_tf_yn=(SLR_1_tf_yn + 1),
-                  smartphone_1_tf_yn=(smartphone_1_tf_yn + 1))
-  tf.polca.model <- poLCA(cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) ~ 1, nclass = 2, data = d2, verbose = F)
-  new.probs.start <- poLCA.reorder(tf.polca.model$probs.start, order(tf.polca.model$P, decreasing = T))
-  tf.polca.model <- poLCA(cbind(clinic_tf_yn, SLR_1_tf_yn, smartphone_1_tf_yn) ~ 1, nclass = 2, data = d2, verbose = F, probs.start=new.probs.start)
-  tf.lc <- d2 %>%
-    cbind(tf.polca.model$predclass) %>%
-    rename(predclass = 'tf.polca.model$predclass') %>%
-    #reformating to binary
-    mutate(clinic_tf_yn=clinic_tf_yn-1,
-           SLR_1_tf_yn=SLR_1_tf_yn-1,
-           smartphone_1_tf_yn=smartphone_1_tf_yn-1,
-           predclass=predclass-1)
-  slr.tf.metrics <- class_metrics(tf.lc, truth = as.factor(predclass), estimate = as.factor(SLR_1_tf_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(slr.tf.npv=npv,
-           slr.tf.ppv=ppv,
-           slr.tf.sens=sens,
-           slr.tf.spec=spec)
-  smart.tf.metrics <- class_metrics(tf.lc, truth = as.factor(predclass), estimate = as.factor(smartphone_1_tf_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(smart.tf.npv=npv,
-           smart.tf.ppv=ppv,
-           smart.tf.sens=sens,
-           smart.tf.spec=spec)
-  clinic.tf.metrics <- class_metrics(tf.lc, truth = as.factor(predclass), estimate = as.factor(clinic_tf_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(clinic.tf.npv=npv,
-           clinic.tf.ppv=ppv,
-           clinic.tf.sens=sens,
-           clinic.tf.spec=spec)
-  metrics.table <- cbind(slr.tf.metrics, smart.tf.metrics, clinic.tf.metrics) %>%
-    mutate(sens.slr.minus.clinic=slr.tf.sens-clinic.tf.sens,
-           sens.slr.minus.smart=slr.tf.sens-smart.tf.sens,
-           sens.clinic.minus.smart=clinic.tf.sens-smart.tf.sens,
-           spec.slr.minus.clinic=slr.tf.spec-clinic.tf.spec,
-           spec.slr.minus.smart=slr.tf.spec-smart.tf.spec,
-           spec.clinic.minus.smart=clinic.tf.spec-smart.tf.spec,
-           ppv.slr.minus.clinic=slr.tf.ppv-clinic.tf.ppv,
-           ppv.slr.minus.smart=slr.tf.ppv-smart.tf.ppv,
-           ppv.clinic.minus.smart=clinic.tf.ppv-smart.tf.ppv,
-           npv.slr.minus.clinic=slr.tf.npv-clinic.tf.npv,
-           npv.slr.minus.smart=slr.tf.npv-smart.tf.npv,
-           npv.clinic.minus.smart=clinic.tf.npv-smart.tf.npv) %>%
-    dplyr::summarize(sens.slr.minus.clinic=min(sens.slr.minus.clinic, na.rm=TRUE),
-                     sens.slr.minus.smart=min(sens.slr.minus.smart, na.rm=TRUE),
-                     sens.clinic.minus.smart=min(sens.clinic.minus.smart, na.rm=TRUE),
-                     spec.slr.minus.clinic=min(spec.slr.minus.clinic, na.rm=TRUE),
-                     spec.slr.minus.smart=min(spec.slr.minus.smart, na.rm=TRUE),
-                     spec.clinic.minus.smart=min(spec.clinic.minus.smart, na.rm=TRUE),
-                     ppv.slr.minus.clinic=min(ppv.slr.minus.clinic),
-                     ppv.slr.minus.smart=min(ppv.slr.minus.smart),
-                     ppv.clinic.minus.smart=min(ppv.clinic.minus.smart),
-                     npv.slr.minus.clinic=min(npv.slr.minus.clinic),
-                     npv.slr.minus.smart=min(npv.slr.minus.smart),
-                     npv.clinic.minus.smart=min(npv.clinic.minus.smart))
-  metrics.table
-}
+bca(bs_lca_lr_ti$pdlr.slr.minus.clinic)
+pdlr_slr_min_clinic <- bs_lca_lr_ti %>%
+  dplyr::select(pdlr.slr.minus.clinic) %>%
+  filter(is.finite(pdlr.slr.minus.clinic)) #removes 1097
+bca(pdlr_slr_min_clinic$pdlr.slr.minus.clinic)
 
-lca.fx.metrics.dif(master1)
-master1 %>% lca.fx.metrics.dif(.) #works
+bca(bs_lca_lr_ti$pdlr.slr.minus.smart)
+pdlr_slr_min_smart <- bs_lca_lr_ti %>%
+  dplyr::select(pdlr.slr.minus.smart) %>%
+  filter(is.finite(pdlr.slr.minus.smart)) #removes 857
+bca(pdlr_slr_min_smart$pdlr.slr.minus.smart)
 
-bs_lca_metrics_dif <- map(bs_nested$splits, ~as_tibble(.) %>% 
-                        unnest %>%  
-                        lca.fx.metrics.dif(.)) %>%
-  bind_rows(.id = 'boots') 
-#getting estimates an 95% BCas
-master1 %>% lca.fx.metrics.dif(.)
-bca(bs_lca_metrics_dif$sens.slr.minus.clinic)
-bca(bs_lca_metrics_dif$sens.slr.minus.smart)
-bca(bs_lca_metrics_dif$sens.clinic.minus.smart)
-bca(bs_lca_metrics_dif$spec.slr.minus.clinic)
-bca(bs_lca_metrics_dif$spec.slr.minus.smart)
-bca(bs_lca_metrics_dif$spec.clinic.minus.smart)
-bca(bs_lca_metrics_dif$ppv.slr.minus.clinic)
-bca(bs_lca_metrics_dif$ppv.slr.minus.smart)
-bca(bs_lca_metrics_dif$ppv.clinic.minus.smart)
-bca(bs_lca_metrics_dif$npv.slr.minus.clinic)
-bca(bs_lca_metrics_dif$npv.slr.minus.smart)
-bca(bs_lca_metrics_dif$npv.clinic.minus.smart)
-#paired wilcox to estimate the difference
-wilcox.test(bs_lca_metrics_dif$npv.clinic.minus.smart)
+bca(bs_lca_lr_ti$pdlr.clinic.minus.smart)
+pdlr_clin_min_smart <- bs_lca_lr_ti %>%
+  dplyr::select(pdlr.clinic.minus.smart) %>%
+  filter(is.finite(pdlr.clinic.minus.smart)) #removes 323
+bca(pdlr_clin_min_smart$pdlr.clinic.minus.smart)
 
+bca(bs_lca_lr_ti$ndlr.slr.minus.clinic)
+bca(bs_lca_lr_ti$ndlr.slr.minus.smart)
+bca(bs_lca_lr_ti$ndlr.clinic.minus.smart)
+
+#Resume JK's code
 # And for TI:
 # FOR TRACHOMA DATA
 tixtab <- as.data.frame(xtabs(data=master1, ~clinic_ti_yn+SLR_1_ti_yn+smartphone_1_ti_yn))
@@ -983,243 +984,53 @@ bca(bs_lca_ti$spec.slr.minus.clin)
 bca(bs_lca_ti$spec.slr.minus.smart)
 bca(bs_lca_ti$spec.clin.minus.smart)
 
-##################################
-##      TABLE 1 TI METRICS      ##
-##################################
-lca.fx.metrics.ti <- function(d) {
-  ti.data <- d %>%
-    dplyr::select(clinic_ti_yn,SLR_1_ti_yn,smartphone_1_ti_yn)
-  ti.form <- cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn)~1
-  d2 <- d %>% 
-    dplyr::select(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) %>%
-    dplyr::mutate(clinic_ti_yn=(clinic_ti_yn + 1),
-                  SLR_1_ti_yn=(SLR_1_ti_yn + 1),
-                  smartphone_1_ti_yn=(smartphone_1_ti_yn + 1))
-  ti.polca.model <- poLCA(cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) ~ 1, nclass = 2, data = d2, verbose = F)
-  #reordering
-  new.probs.start <- poLCA.reorder(ti.polca.model$probs.start, order(ti.polca.model$P, decreasing = T))
-  ti.polca.model <- poLCA(cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) ~ 1, nclass = 2, data = d2, verbose = F, probs.start=new.probs.start)
-  ti.lc <- d2 %>%
-    cbind(ti.polca.model$predclass) %>%
-    rename(predclass = 'ti.polca.model$predclass') %>%
-    #reformating to binary
-    mutate(clinic_ti_yn=clinic_ti_yn-1,
-           SLR_1_ti_yn=SLR_1_ti_yn-1,
-           smartphone_1_ti_yn=smartphone_1_ti_yn-1,
-           predclass=predclass-1)
-  #redoing for only ppv and npv
-  slr.ti.metrics <- class_metrics(ti.lc, truth = as.factor(predclass), estimate = as.factor(SLR_1_ti_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(slr.ti.npv=npv,
-           slr.ti.ppv=ppv,
-           slr.ti.sens=sens,
-           slr.ti.spec=spec)
-  smart.ti.metrics <- class_metrics(ti.lc, truth = as.factor(predclass), estimate = as.factor(smartphone_1_ti_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(smart.ti.npv=npv,
-           smart.ti.ppv=ppv,
-           smart.ti.sens=sens,
-           smart.ti.spec=spec)
-  clinic.ti.metrics <- class_metrics(ti.lc, truth = as.factor(predclass), estimate = as.factor(clinic_ti_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(clinic.ti.npv=npv,
-           clinic.ti.ppv=ppv,
-           clinic.ti.sens=sens,
-           clinic.ti.spec=spec)
-  metrics.table <- cbind(slr.ti.metrics, smart.ti.metrics, clinic.ti.metrics)
-  metrics.table
-}
-lca.fx.metrics.ti(master1) #testing
-
-bs_lca_metrics.ti <- map(bs_nested$splits, ~as_tibble(.) %>% 
-                        unnest %>%  
-                          lca.fx.metrics.ti(.)) %>%
-  # Then bind together the results (the single row from the summarize above)
-  bind_rows(.id = 'boots') 
-#getting estimates an 95% BCas
-master1 %>% lca.fx.metrics.ti(.)
-mean(bs_lca_metrics.ti$slr.ti.sens)
-#SLR
-bca(bs_lca_metrics.ti$slr.ti.sens) 
-bca(bs_lca_metrics.ti$slr.ti.spec)
-bca(bs_lca_metrics.ti$slr.ti.ppv)
-bca(bs_lca_metrics.ti$slr.ti.npv) 
-#smart
-bca(bs_lca_metrics.ti$smart.ti.sens)
-bca(bs_lca_metrics.ti$smart.ti.spec)
-bca(bs_lca_metrics.ti$smart.ti.ppv)
-bca(bs_lca_metrics.ti$smart.ti.npv)
-#clinic
-bca(bs_lca_metrics.ti$clinic.ti.sens)
-bca(bs_lca_metrics.ti$clinic.ti.spec)
-bca(bs_lca_metrics.ti$clinic.ti.ppv)
-bca(bs_lca_metrics.ti$clinic.ti.npv)
-
-#Differences for TI PPV/NPV
-lca.fx.metrics.ti.dif <- function(d) {
-  ti.data <- d %>%
-    dplyr::select(clinic_ti_yn,SLR_1_ti_yn,smartphone_1_ti_yn)
-  ti.form <- cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn)~1
-  d2 <- d %>% 
-    dplyr::select(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) %>%
-    dplyr::mutate(clinic_ti_yn=(clinic_ti_yn + 1),
-                  SLR_1_ti_yn=(SLR_1_ti_yn + 1),
-                  smartphone_1_ti_yn=(smartphone_1_ti_yn + 1))
-  ti.polca.model <- poLCA(cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) ~ 1, nclass = 2, data = d2, verbose = F)
-  #reordering
-  new.probs.start <- poLCA.reorder(ti.polca.model$probs.start, order(ti.polca.model$P, decreasing = T))
-  ti.polca.model <- poLCA(cbind(clinic_ti_yn, SLR_1_ti_yn, smartphone_1_ti_yn) ~ 1, nclass = 2, data = d2, verbose = F, probs.start=new.probs.start)
-  ti.lc <- d2 %>%
-    cbind(ti.polca.model$predclass) %>%
-    rename(predclass = 'ti.polca.model$predclass') %>%
-    #reformating to binary
-    mutate(clinic_ti_yn=clinic_ti_yn-1,
-           SLR_1_ti_yn=SLR_1_ti_yn-1,
-           smartphone_1_ti_yn=smartphone_1_ti_yn-1,
-           predclass=predclass-1)
-  #redoing for only ppv and npv
-  slr.ti.metrics <- class_metrics(ti.lc, truth = as.factor(predclass), estimate = as.factor(SLR_1_ti_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(slr.ti.npv=npv,
-           slr.ti.ppv=ppv,
-           slr.ti.sens=sens,
-           slr.ti.spec=spec)
-  smart.ti.metrics <- class_metrics(ti.lc, truth = as.factor(predclass), estimate = as.factor(smartphone_1_ti_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(smart.ti.npv=npv,
-           smart.ti.ppv=ppv,
-           smart.ti.sens=sens,
-           smart.ti.spec=spec)
-  clinic.ti.metrics <- class_metrics(ti.lc, truth = as.factor(predclass), estimate = as.factor(clinic_ti_yn)) %>%
-    dplyr::select(-.estimator) %>%
-    spread(.metric, .estimate) %>%
-    rename(clinic.ti.npv=npv,
-           clinic.ti.ppv=ppv,
-           clinic.ti.sens=sens,
-           clinic.ti.spec=spec)
-  metrics.table <- cbind(slr.ti.metrics, smart.ti.metrics, clinic.ti.metrics) %>%
-  mutate(sens.slr.minus.clinic=slr.ti.sens-clinic.ti.sens,
-         sens.slr.minus.smart=slr.ti.sens-smart.ti.sens,
-         sens.clinic.minus.smart=clinic.ti.sens-smart.ti.sens,
-         spec.slr.minus.clinic=slr.ti.spec-clinic.ti.spec,
-         spec.slr.minus.smart=slr.ti.spec-smart.ti.spec,
-         spec.clinic.minus.smart=clinic.ti.spec-smart.ti.spec,
-         ppv.slr.minus.clinic=slr.ti.ppv-clinic.ti.ppv,
-         ppv.slr.minus.smart=slr.ti.ppv-smart.ti.ppv,
-         ppv.clinic.minus.smart=clinic.ti.ppv-smart.ti.ppv,
-         npv.slr.minus.clinic=slr.ti.npv-clinic.ti.npv,
-         npv.slr.minus.smart=slr.ti.npv-smart.ti.npv,
-         npv.clinic.minus.smart=clinic.ti.npv-smart.ti.npv) %>%
-  dplyr::summarize(sens.slr.minus.clinic=min(sens.slr.minus.clinic, na.rm=TRUE),
-                   sens.slr.minus.smart=min(sens.slr.minus.smart, na.rm=TRUE),
-                   sens.clinic.minus.smart=min(sens.clinic.minus.smart, na.rm=TRUE),
-                   spec.slr.minus.clinic=min(spec.slr.minus.clinic, na.rm=TRUE),
-                   spec.slr.minus.smart=min(spec.slr.minus.smart, na.rm=TRUE),
-                   spec.clinic.minus.smart=min(spec.clinic.minus.smart, na.rm=TRUE),
-                   ppv.slr.minus.clinic=min(ppv.slr.minus.clinic),
-                   ppv.slr.minus.smart=min(ppv.slr.minus.smart),
-                   ppv.clinic.minus.smart=min(ppv.clinic.minus.smart),
-                   npv.slr.minus.clinic=min(npv.slr.minus.clinic),
-                   npv.slr.minus.smart=min(npv.slr.minus.smart),
-                   npv.clinic.minus.smart=min(npv.clinic.minus.smart))
-metrics.table
-}
-
-lca.fx.metrics.ti.dif(master1)
-master1 %>% lca.fx.metrics.ti.dif(.) #works
-
-bs_lca_metrics_dif_ti <- map(bs_nested$splits, ~as_tibble(.) %>% 
-                            unnest %>%  
-                            lca.fx.metrics.ti.dif(.)) %>%
-  bind_rows(.id = 'boots') 
-#getting estimates an 95% BCas
-master1 %>% lca.fx.metrics.ti.dif(.)
-bca(bs_lca_metrics_dif_ti$sens.slr.minus.clinic)
-bca(bs_lca_metrics_dif_ti$sens.slr.minus.smart)
-bca(bs_lca_metrics_dif_ti$sens.clinic.minus.smart)
-bca(bs_lca_metrics_dif_ti$spec.slr.minus.clinic)
-bca(bs_lca_metrics_dif_ti$spec.slr.minus.smart)
-bca(bs_lca_metrics_dif_ti$spec.clinic.minus.smart)
-bca(bs_lca_metrics_dif_ti$ppv.slr.minus.clinic)
-bca(bs_lca_metrics_dif_ti$ppv.slr.minus.smart)
-bca(bs_lca_metrics_dif_ti$ppv.clinic.minus.smart)
-bca(bs_lca_metrics_dif_ti$npv.slr.minus.clinic)
-bca(bs_lca_metrics_dif_ti$npv.slr.minus.smart)
-bca(bs_lca_metrics_dif_ti$npv.clinic.minus.smart)
-##################################
-##      Calculating PLR/NLR     ##
-##################################
-library(DTComPair)
-#JN this package also allows for comparison between sens/spec/plr/nlr
-# SLR TF vs LC
-slr_tf_tab <- tab.1test(predclass, SLR_1_tf_yn, data=tf_with_lc)     
-acc.1test(slr_tf_tab, alpha = 0.05)
-#smart TF vs LC
-smart_tf_tab <- tab.1test(predclass, smartphone_1_tf_yn, data=tf_with_lc)
-acc.1test(smart_tf_tab, alpha = 0.05)
-#clinic TF vs LC
-clinic_tf_tab <- tab.1test(predclass, clinic_tf_yn, data=tf_with_lc)
-acc.1test(clinic_tf_tab, alpha = 0.05)
-#SLR TI vs LC
-slr_ti_tab <- tab.1test(predclass, SLR_1_ti_yn, data=ti_with_lc)     
-acc.1test(slr_ti_tab, alpha = 0.05) #sens and NPV = 1 and NDLR =0...
-#smart TI vs LC
-smart_ti_tab <- tab.1test(predclass, smartphone_1_ti_yn, data=ti_with_lc)
-acc.1test(smart_ti_tab, alpha = 0.05)
-#clinic TI vs LC
-clinic_ti_tab <- tab.1test(predclass, clinic_ti_yn, data=ti_with_lc)
-acc.1test(clinic_ti_tab, alpha = 0.05)
-
-#comparing sens/spec
 #slr smart tf
 slr.smart.tf.tab <- tab.paired(predclass, SLR_1_tf_yn, smartphone_1_tf_yn, data=tf_with_lc) #test1 = slr, test2= smart
+#comparing sens/spec
 sesp.mcnemar(slr.smart.tf.tab) #Mcnemar chi-squared comparison
 sesp.exactbinom(slr.smart.tf.tab) #Exact binom method for comparison
+#comparing dlrp/dlrn
+dlr.regtest(slr.smart.tf.tab, alpha = 0.05) #uses regression model approach proposed by Gu and Pepe (2009)
+
 #slr clinic tf
 slr.clinic.tf.tab <- tab.paired(predclass, SLR_1_tf_yn, clinic_tf_yn, data=tf_with_lc) #test1 = slr, test2= clinic
+#comparing sens/spec
 sesp.mcnemar(slr.clinic.tf.tab) 
 sesp.exactbinom(slr.clinic.tf.tab)
+#comparing dlrp/dlrn
+dlr.regtest(slr.clinic.tf.tab, alpha = 0.05)
+
 #smart clinic tf
 smart.clinic.tf.tab <- tab.paired(predclass, smartphone_1_tf_yn, clinic_tf_yn, data=tf_with_lc) #test1 = smart, test2= clinic
+#comparing sens/spec
 sesp.mcnemar(smart.clinic.tf.tab)
 sesp.exactbinom(smart.clinic.tf.tab)
+#comparing dlrp/dlrn
+dlr.regtest(smart.clinic.tf.tab, alpha = 0.05)
+
 #slr smart ti
 slr.smart.ti.tab <- tab.paired(predclass, SLR_1_ti_yn, smartphone_1_ti_yn, data=ti_with_lc) #test1 = slr, test2= smart
+#comparing sens/spec
 sesp.mcnemar(slr.smart.ti.tab)
 sesp.exactbinom(slr.smart.ti.tab)
+#comparing dlrp/dlrn
+dlr.regtest(slr.smart.ti.tab)
+
 #slr clinic ti
 slr.clinic.ti.tab <- tab.paired(predclass, SLR_1_ti_yn, clinic_ti_yn, data=ti_with_lc) #test1 = slr, test2= clinic
+#comparing sens/spec
 sesp.mcnemar(slr.clinic.ti.tab) 
 sesp.exactbinom(slr.clinic.ti.tab)
-#smart clinic ti
-smart.clinic.tf.tab <- tab.paired(predclass, smartphone_1_tf_yn, clinic_tf_yn, data=tf_with_lc) #test1 = smart, test2= clinic
-sesp.mcnemar(smart.clinic.tf.tab) 
-sesp.exactbinom(smart.clinic.tf.tab)
-
 #comparing dlrp/dlrn
-#slr smart tf
-dlr.regtest(slr.smart.tf.tab, alpha = 0.05) #uses regression model approach proposed by Gu and Pepe (2009)
-pv.rpv(slr.smart.tf.tab, alpha = 0.05) #compares using relative predictive values, as proposed by Moskowitz and Pepe (2006)
-#slr clinic tf
-dlr.regtest(slr.clinic.tf.tab, alpha = 0.05)
-pv.rpv(slr.clinic.tf.tab, alpha = 0.05)
-#smart clinic tf
-dlr.regtest(smart.clinic.tf.tab, alpha = 0.05)
-pv.rpv(smart.clinic.tf.tab, alpha = 0.05)
-#slr smart ti
-dlr.regtest(slr.smart.ti.tab, alpha = 0.05)
-pv.rpv(slr.smart.ti.tab, alpha = 0.05)
-#slr clinic ti
 dlr.regtest(slr.clinic.ti.tab, alpha = 0.05)
-pv.rpv(slr.clinic.ti.tab, alpha = 0.05)
+
 #smart clinic ti
-dlr.regtest(slr.smart.ti.tab, alpha = 0.05)
-pv.rpv(slr.smart.ti.tab, alpha = 0.05)
+smart.clinic.ti.tab <- tab.paired(predclass, smartphone_1_ti_yn, clinic_ti_yn, data=ti_with_lc) #test1 = smart, test2= clinic
+#comparing sens/spec
+sesp.mcnemar(smart.clinic.ti.tab) 
+sesp.exactbinom(smart.clinic.ti.tab)
+#comparing dlrp/dlrn
+dlr.regtest(smart.clinic.ti.tab, alpha = 0.05)
 
 # # THIS WHOLE SECTION IS NOT REALLY BEING USED IF WE ONLY DO DIFFERENCE FROM LCA
 # # BUT LEAVING HERE JUST AS A RECORD
@@ -1417,7 +1228,7 @@ prevdiff.fx <- function(d) {
 prevdiff.fx(filter(villagemeansjk_wide, grade=="TF"))
 prevdiff.fx(filter(villagemeansjk_wide, grade=="TI"))
 # Make bootstrap splits
-bs_villageprev <- bootstraps(villagemeansjk_wide, times = 9)
+bs_villageprev <- bootstraps(villagemeansjk_wide, times = 9999)
 
 bs_prevdiff <- map(bs_villageprev$splits, ~as_tibble(.) %>% 
                      group_by(grade) %>%
